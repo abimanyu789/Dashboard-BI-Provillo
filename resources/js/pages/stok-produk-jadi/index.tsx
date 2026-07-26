@@ -78,10 +78,12 @@ export default function StokProdukJadiIndex({
     };
 
     const SortIcon = ({ column }: { column: SortableColumn }) => {
-        if (sortBy !== column)
+        if (sortBy !== column) {
             return (
                 <ChevronsUpDown className="ml-1 inline size-3.5 opacity-50" />
             );
+        }
+
         return sortDir === 'asc' ? (
             <ChevronUp className="ml-1 inline size-3.5" />
         ) : (
@@ -167,6 +169,7 @@ export default function StokProdukJadiIndex({
             label: jenis,
             variant: 'outline' as const,
         };
+
         return <Badge variant={config.variant}>{config.label}</Badge>;
     };
 
@@ -188,7 +191,7 @@ export default function StokProdukJadiIndex({
                     <Link href={stokProdukJadi.create.url()}>
                         <Button>
                             <Plus className="mr-2 size-4" />
-                            Pengiriman
+                            Tambah Data
                         </Button>
                     </Link>
                 </div>

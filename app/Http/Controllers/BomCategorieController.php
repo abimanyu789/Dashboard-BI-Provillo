@@ -33,8 +33,10 @@ class BomCategorieController extends Controller
         $bomCategories = BomCategorie::query()
             ->withCount(['bomDetails', 'produk'])
             ->when($search, function ($query, $search) {
-                $query->where('nama_bom', 'like', "%{$search}%")
-                    ->orWhere('keterangan', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('nama_bom', 'like', "%{$search}%")
+                        ->orWhere('keterangan', 'like', "%{$search}%");
+                });
             })
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)

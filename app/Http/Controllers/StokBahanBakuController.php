@@ -37,10 +37,14 @@ class StokBahanBakuController extends Controller
 
         $riwayat = StokBahanBaku::with('bahanBaku')
             ->when($search, function ($query, $search) {
-                $query->whereHas('bahanBaku', function ($q) use ($search) {
-                    $q->where('kode_bahan', 'like', "%{$search}%")
-                      ->orWhere('nama_bahan', 'like', "%{$search}%");
-                })->orWhere('keterangan', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->whereHas('bahanBaku', function ($q2) use ($search) {
+                        $q2->where(function ($q3) use ($search) {
+                            $q3->where('kode_bahan', 'like', "%{$search}%")
+                              ->orWhere('nama_bahan', 'like', "%{$search}%");
+                        });
+                    })->orWhere('keterangan', 'like', "%{$search}%");
+                });
             })
             ->when($bahanBakuId, function ($query, $id) {
                 $query->where('bahan_baku_id', $id);

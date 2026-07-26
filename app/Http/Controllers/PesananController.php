@@ -36,10 +36,12 @@ class PesananController extends Controller
 
         $pesanans = Pesanan::with('customer')
             ->when($search, function ($query, $search) {
-                $query->where('nomor_pesanan', 'like', "%{$search}%")
-                    ->orWhereHas('customer', function ($q) use ($search) {
-                        $q->where('nama_customer', 'like', "%{$search}%");
-                    });
+                $query->where(function ($q) use ($search) {
+                    $q->where('nomor_pesanan', 'like', "%{$search}%")
+                        ->orWhereHas('customer', function ($q2) use ($search) {
+                            $q2->where('nama_customer', 'like', "%{$search}%");
+                        });
+                });
             })
             ->when($status && in_array($status, ['pending', 'proses', 'selesai', 'dibatalkan']), function ($query) use ($status) {
                 $query->where('status', $status);

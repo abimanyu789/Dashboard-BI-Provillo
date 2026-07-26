@@ -36,9 +36,11 @@ class ProdukController extends Controller
 
         $produks = Produk::query()
             ->when($search, function ($query, $search) {
-                $query->where('kode_produk', 'like', "%{$search}%")
-                    ->orWhere('nama_produk', 'like', "%{$search}%")
-                    ->orWhere('warna', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('kode_produk', 'like', "%{$search}%")
+                        ->orWhere('nama_produk', 'like', "%{$search}%")
+                        ->orWhere('warna', 'like', "%{$search}%");
+                });
             })
             ->when($bom === 'ada', function ($query) {
                 $query->whereNotNull('bom_category_id');

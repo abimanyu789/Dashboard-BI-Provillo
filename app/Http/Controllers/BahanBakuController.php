@@ -35,9 +35,11 @@ class BahanBakuController extends Controller
 
         $bahanBakus = BahanBaku::query()
             ->when($search, function ($query, $search) {
-                $query->where('kode_bahan', 'like', "%{$search}%")
-                    ->orWhere('nama_bahan', 'like', "%{$search}%")
-                    ->orWhere('satuan', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('kode_bahan', 'like', "%{$search}%")
+                        ->orWhere('nama_bahan', 'like', "%{$search}%")
+                        ->orWhere('satuan', 'like', "%{$search}%");
+                });
             })
             ->when($satuan, function ($query, $satuan) {
                 $query->where('satuan', $satuan);

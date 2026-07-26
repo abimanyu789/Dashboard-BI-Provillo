@@ -36,8 +36,10 @@ class ArusKasController extends Controller
 
         $transaksis = ArusKas::with(['pembayaran.pesanan', 'createdBy'])
             ->when($search, function ($q, $search) {
-                $q->where('keterangan', 'like', "%{$search}%")
-                  ->orWhere('kategori', 'like', "%{$search}%");
+                $q->where(function ($sub) use ($search) {
+                    $sub->where('keterangan', 'like', "%{$search}%")
+                        ->orWhere('kategori', 'like', "%{$search}%");
+                });
             })
             ->when($jenis && in_array($jenis, ['pemasukan', 'pengeluaran']), function ($q) use ($jenis) {
                 $q->where('jenis', $jenis);

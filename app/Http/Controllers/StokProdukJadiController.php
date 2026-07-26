@@ -37,10 +37,14 @@ class StokProdukJadiController extends Controller
 
         $riwayat = StokProdukJadi::with('produk')
             ->when($search, function ($query, $search) {
-                $query->whereHas('produk', function ($q) use ($search) {
-                    $q->where('kode_produk', 'like', "%{$search}%")
-                      ->orWhere('nama_produk', 'like', "%{$search}%");
-                })->orWhere('keterangan', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->whereHas('produk', function ($q2) use ($search) {
+                        $q2->where(function ($q3) use ($search) {
+                            $q3->where('kode_produk', 'like', "%{$search}%")
+                              ->orWhere('nama_produk', 'like', "%{$search}%");
+                        });
+                    })->orWhere('keterangan', 'like', "%{$search}%");
+                });
             })
             ->when($produkId, function ($query, $id) {
                 $query->where('produk_id', $id);

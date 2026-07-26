@@ -43,9 +43,11 @@ class KaryawanController extends Controller
 
         $karyawans = Karyawan::query()
             ->when($search, function ($query, $search) {
-                $query->where('nama_karyawan', 'like', "%{$search}%")
-                    ->orWhere('no_hp', 'like', "%{$search}%")
-                    ->orWhere('jabatan', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('nama_karyawan', 'like', "%{$search}%")
+                        ->orWhere('no_hp', 'like', "%{$search}%")
+                        ->orWhere('jabatan', 'like', "%{$search}%");
+                });
             })
             ->when($jabatan, function ($query) use ($jabatan) {
                 $query->where('jabatan', $jabatan);

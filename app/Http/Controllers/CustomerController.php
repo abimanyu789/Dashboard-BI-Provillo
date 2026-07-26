@@ -35,10 +35,12 @@ class CustomerController extends Controller
 
         $customers = Customer::query()
             ->when($search, function ($query, $search) {
-                $query->where('nama_customer', 'like', "%{$search}%")
-                    ->orWhere('no_hp', 'like', "%{$search}%")
-                    ->orWhere('alamat', 'like', "%{$search}%")
-                    ->orWhere('jenis_customer', 'like', "%{$search}%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('nama_customer', 'like', "%{$search}%")
+                        ->orWhere('no_hp', 'like', "%{$search}%")
+                        ->orWhere('alamat', 'like', "%{$search}%")
+                        ->orWhere('jenis_customer', 'like', "%{$search}%");
+                });
             })
             ->when($jenis && in_array($jenis, ['b2b', 'b2c']), function ($query) use ($jenis) {
                 $query->where('jenis_customer', $jenis);
