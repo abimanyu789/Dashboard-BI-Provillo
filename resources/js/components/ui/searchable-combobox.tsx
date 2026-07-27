@@ -44,11 +44,23 @@ export function SearchableCombobox({
     disabled = false,
 }: SearchableComboboxProps) {
     const [open, setOpen] = React.useState(false)
+    const [search, setSearch] = React.useState('')
 
     const selectedItem = items.find((item) => item.value === value)
 
+    const filtered = search.trim() === ''
+        ? items
+        : items.filter((item) =>
+              item.label.toLowerCase().includes(search.toLowerCase())
+          )
+
+    const handleOpenChange = (nextOpen: boolean) => {
+        setOpen(nextOpen)
+        if (!nextOpen) setSearch('')
+    }
+
     return (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
                 <Button
                     variant="outline"
@@ -68,15 +80,19 @@ export function SearchableCombobox({
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                <Command>
-                    <CommandInput placeholder={searchPlaceholder} />
+                <Command shouldFilter={false}>
+                    <CommandInput
+                        placeholder={searchPlaceholder}
+                        value={search}
+                        onValueChange={setSearch}
+                    />
                     <CommandList>
                         <CommandEmpty>{emptyText}</CommandEmpty>
                         <CommandGroup>
-                            {items.map((item) => (
+                            {filtered.map((item) => (
                                 <CommandItem
                                     key={item.value}
-                                    value={item.label}
+                                    value={String(item.value)}
                                     onSelect={() => {
                                         onValueChange(item.value)
                                         setOpen(false)
