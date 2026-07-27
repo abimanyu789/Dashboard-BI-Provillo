@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\TransaksiProdukRequest;
+use App\Models\Pesanan;
 use App\Models\Produk;
 use App\Models\StokProdukJadi;
 use App\Services\Inventory\StockProdukService;
+use App\Services\PesananService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -13,7 +15,8 @@ use Inertia\Inertia;
 class StokProdukJadiController extends Controller
 {
     public function __construct(
-        private readonly StockProdukService $service
+        private readonly StockProdukService $service,
+        private readonly PesananService $pesananService,
     ) {}
 
     /**
@@ -30,12 +33,12 @@ class StokProdukJadiController extends Controller
         $sortDir        = $request->input('sort_dir', 'desc');
 
         $allowedSorts = ['created_at', 'qty', 'stok_sebelum', 'stok_sesudah', 'jenis_transaksi'];
-        if (!in_array($sortBy, $allowedSorts)) {
+        if (! in_array($sortBy, $allowedSorts)) {
             $sortBy = 'created_at';
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
 
-        $riwayat = StokProdukJadi::with('produk')
+        $riwayat = StokProdukJadi::with(['produk', 'pesanan.customer'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->whereHas('produk', function ($q2) use ($search) {
@@ -43,7 +46,10 @@ class StokProdukJadiController extends Controller
                             $q3->where('kode_produk', 'like', "%{$search}%")
                               ->orWhere('nama_produk', 'like', "%{$search}%");
                         });
-                    })->orWhere('keterangan', 'like', "%{$search}%");
+                    })->orWhere('keterangan', 'like', "%{$search}%")
+                      ->orWhereHas('pesanan', function ($q2) use ($search) {
+                          $q2->where('nomor_pesanan', 'like', "%{$search}%");
+                      });
                 });
             })
             ->when($produkId, function ($query, $id) {
@@ -52,18 +58,18 @@ class StokProdukJadiController extends Controller
             ->when($jenisTransaksi, function ($query, $jenis) {
                 $query->where('jenis_transaksi', $jenis);
             })
-            ->when($tanggalDari, function ($query, $tanggal) {
-                $query->whereDate('created_at', '>=', $tanggal);
+            ->when($tanggalDari, function ($query, $dari) {
+                $query->whereDate('created_at', '>=', $dari);
             })
-            ->when($tanggalSampai, function ($query, $tanggal) {
-                $query->whereDate('created_at', '<=', $tanggal);
+            ->when($tanggalSampai, function ($query, $sampai) {
+                $query->whereDate('created_at', '<=', $sampai);
             })
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)
             ->withQueryString();
 
         $produkOptions = Produk::orderBy('nama_produk')
-            ->get(['id', 'kode_produk', 'nama_produk']);
+            ->get(['id', 'kode_produk', 'nama_produk', 'stok']);
 
         return Inertia::render('stok-produk-jadi/index', [
             'riwayat'       => $riwayat,
@@ -88,12 +94,53 @@ class StokProdukJadiController extends Controller
         $produkList = Produk::orderBy('nama_produk')
             ->get(['id', 'kode_produk', 'nama_produk', 'stok']);
 
-        // Pre-select jika ada query param (deep link dari halaman lain)
+        // Pesanan aktif (belum locked) untuk dropdown pengiriman
+        $pesananOptions = Pesanan::with('customer:id,nama_customer')
+            ->whereIn('status', ['pending', 'proses'])
+            ->orderByDesc('tanggal')
+            ->orderByDesc('id')
+            ->get(['id', 'nomor_pesanan', 'tanggal', 'status', 'customer_id', 'total'])
+            ->map(fn (Pesanan $p) => [
+                'id'            => $p->id,
+                'nomor_pesanan' => $p->nomor_pesanan,
+                'tanggal'       => $p->tanggal?->format('Y-m-d'),
+                'status'        => $p->status,
+                'customer'      => $p->customer?->nama_customer,
+                'total'         => $p->total,
+            ]);
+
         $selectedId = $request->input('produk_id');
+        $selectedPesananId = $request->input('pesanan_id');
 
         return Inertia::render('stok-produk-jadi/create', [
-            'produkList' => $produkList,
-            'selectedId' => $selectedId ? (int) $selectedId : null,
+            'produkList'         => $produkList,
+            'pesananOptions'     => $pesananOptions,
+            'selectedId'         => $selectedId ? (int) $selectedId : null,
+            'selectedPesananId'  => $selectedPesananId ? (int) $selectedPesananId : null,
+        ]);
+    }
+
+    /**
+     * Endpoint JSON: sisa pengiriman per produk untuk pesanan terpilih.
+     * Dipakai form create stok produk jadi saat pilih pesanan.
+     */
+    public function sisaPengiriman(Pesanan $pesanan)
+    {
+        if ($pesanan->isLocked()) {
+            return response()->json([
+                'message' => "Pesanan berstatus '{$pesanan->status}' tidak bisa dikirim.",
+                'items'   => [],
+            ], 422);
+        }
+
+        return response()->json([
+            'pesanan' => [
+                'id'            => $pesanan->id,
+                'nomor_pesanan' => $pesanan->nomor_pesanan,
+                'status'        => $pesanan->status,
+                'customer'      => $pesanan->customer?->nama_customer,
+            ],
+            'items' => $pesanan->sisaPengirimanItems(),
         ]);
     }
 
@@ -103,24 +150,44 @@ class StokProdukJadiController extends Controller
      */
     public function store(TransaksiProdukRequest $request)
     {
-        $jenis = $request->validated('jenis_transaksi');
-        $items = $request->validated('items');
+        $jenis     = $request->validated('jenis_transaksi');
+        $items     = $request->validated('items');
+        $pesananId = $request->validated('pesanan_id');
 
         try {
-            DB::transaction(function () use ($jenis, $items) {
+            DB::transaction(function () use ($jenis, $items, $pesananId) {
+                $pesanan = null;
+
+                if ($jenis === 'pengiriman' && $pesananId) {
+                    // Lock pesanan untuk cek sisa kirim + auto status (H14)
+                    $pesanan = Pesanan::whereKey($pesananId)->lockForUpdate()->firstOrFail();
+
+                    if ($pesanan->isLocked()) {
+                        throw new \RuntimeException(
+                            "Pesanan {$pesanan->nomor_pesanan} berstatus '{$pesanan->status}' dan tidak bisa dikirim."
+                        );
+                    }
+                }
+
                 foreach ($items as $item) {
-                    $produk     = Produk::findOrFail($item['produk_id']);
+                    $produk     = Produk::whereKey($item['produk_id'])->lockForUpdate()->firstOrFail();
                     $qty        = (int) $item['qty'];
                     $keterangan = $item['keterangan'] ?? null;
 
                     // Pengiriman selalu kurangi. Penyesuaian bisa + atau − tergantung sign qty.
                     if ($jenis === 'pengiriman' || $qty < 0) {
+                        $keteranganFinal = $keterangan;
+                        if ($jenis === 'pengiriman' && $pesanan && empty($keteranganFinal)) {
+                            $keteranganFinal = "Pengiriman pesanan {$pesanan->nomor_pesanan}";
+                        }
+
                         $this->service->reduceStock(
                             produk:     $produk,
                             qty:        abs($qty),
                             jenis:      $jenis,
-                            keterangan: $keterangan,
+                            keterangan: $keteranganFinal,
                             createdBy:  auth()->id(),
+                            pesananId:  $jenis === 'pengiriman' ? $pesananId : null,
                         );
                     } else {
                         $this->service->addStock(
@@ -131,6 +198,12 @@ class StokProdukJadiController extends Controller
                             createdBy:  auth()->id(),
                         );
                     }
+                }
+
+                // Auto promote pending→proses + evaluate selesai
+                if ($jenis === 'pengiriman' && $pesanan) {
+                    $this->pesananService->promoteToProsesIfPending($pesanan);
+                    $this->pesananService->evaluateCompletion($pesanan);
                 }
             });
         } catch (\RuntimeException $e) {
@@ -151,7 +224,7 @@ class StokProdukJadiController extends Controller
      */
     public function show(StokProdukJadi $stokProdukJadi)
     {
-        $stokProdukJadi->load('produk');
+        $stokProdukJadi->load(['produk', 'pesanan.customer']);
 
         return Inertia::render('stok-produk-jadi/show', [
             'transaksi' => $stokProdukJadi,

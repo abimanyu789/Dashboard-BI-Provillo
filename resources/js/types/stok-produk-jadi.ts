@@ -6,6 +6,7 @@ export type JenisTransaksiProduk =
 export interface StokProdukJadi {
     id: number;
     produk_id: number;
+    pesanan_id: number | null;
     jenis_transaksi: JenisTransaksiProduk;
     qty: number;
     stok_sebelum: number;
@@ -16,6 +17,11 @@ export interface StokProdukJadi {
     updated_at: string;
     // Relasi
     produk?: Produk;
+    pesanan?: {
+        id: number;
+        nomor_pesanan: string;
+        customer?: { id: number; nama_customer: string };
+    };
 }
 
 export interface StokProdukOption {
@@ -23,6 +29,25 @@ export interface StokProdukOption {
     kode_produk: string;
     nama_produk: string;
     stok: number;
+}
+
+export interface PesananOptionForPengiriman {
+    id: number;
+    nomor_pesanan: string;
+    tanggal: string | null;
+    status: string;
+    customer: string | null;
+    total: string | number;
+}
+
+export interface SisaPengirimanItem {
+    produk_id: number;
+    kode_produk: string | null;
+    nama_produk: string | null;
+    qty_pesan: number;
+    qty_dikirim: number;
+    qty_sisa: number;
+    stok_tersedia: number;
 }
 
 export interface StokProdukJadiIndexProps {
@@ -54,7 +79,9 @@ export interface StokProdukJadiIndexProps {
 
 export interface StokProdukJadiCreateProps {
     produkList: StokProdukOption[];
+    pesananOptions: PesananOptionForPengiriman[];
     selectedId: number | null;
+    selectedPesananId: number | null;
 }
 
 export interface StokProdukJadiShowProps {
@@ -69,5 +96,6 @@ export interface PengirimanItemRow {
 
 export interface PengirimanFormData {
     jenis_transaksi: 'pengiriman' | 'penyesuaian';
+    pesanan_id: number | '';
     items: PengirimanItemRow[];
 }

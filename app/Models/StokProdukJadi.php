@@ -21,6 +21,7 @@ class StokProdukJadi extends Model
      */
     protected $fillable = [
         'produk_id',
+        'pesanan_id',
         'jenis_transaksi',
         'qty',
         'stok_sebelum',
@@ -46,6 +47,14 @@ class StokProdukJadi extends Model
     public function produk(): BelongsTo
     {
         return $this->belongsTo(Produk::class, 'produk_id');
+    }
+
+    /**
+     * Pesanan terkait — hanya diisi untuk transaksi pengiriman.
+     */
+    public function pesanan(): BelongsTo
+    {
+        return $this->belongsTo(Pesanan::class, 'pesanan_id');
     }
 
     /**

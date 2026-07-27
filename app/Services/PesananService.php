@@ -39,13 +39,26 @@ class PesananService
     }
 
     /**
-     * Update pesanan (full edit — hanya boleh saat status pending).
+     * Update pesanan (full edit — hanya boleh saat status pending & belum ada pengiriman).
      *
      * @param  array $data  Validated data dari PesananRequest
      */
     public function updateWithDetails(Pesanan $pesanan, array $data): Pesanan
     {
         return DB::transaction(function () use ($pesanan, $data) {
+            // H9: blok edit jika sudah ada pengiriman
+            if ($pesanan->hasPengiriman()) {
+                throw new \RuntimeException(
+                    'Pesanan yang sudah memiliki pengiriman tidak dapat diedit.'
+                );
+            }
+
+            if ($pesanan->isLocked()) {
+                throw new \RuntimeException(
+                    "Pesanan dengan status '{$pesanan->status}' tidak dapat diedit."
+                );
+            }
+
             $kalkulasi = $this->hitungTotal($data['items'], $data);
 
             $pesanan->update([
@@ -68,13 +81,14 @@ class PesananService
     }
 
     /**
-     * Update status pesanan dengan validasi flow BR-06 & BR-07.
+     * Update status pesanan dengan validasi flow BR-06 & BR-07 + hardening.
      *
-     * Flow yang valid:
+     * Flow yang valid (manual):
      *   pending → proses
      *   pending → dibatalkan
-     *   proses  → selesai
      *   proses  → dibatalkan
+     *
+     * Transisi ke 'selesai' HANYA lewat evaluateCompletion() (R1 / BR-PSN-10).
      *
      * @throws \RuntimeException  Jika transisi status tidak valid
      */
@@ -86,23 +100,68 @@ class PesananService
             );
         }
 
+        // R1: selesai hanya otomatis
+        if ($statusBaru === 'selesai') {
+            throw new \RuntimeException(
+                'Status Selesai di-set otomatis saat pembayaran lunas dan semua produk sudah terkirim.'
+            );
+        }
+
         $transisiValid = [
             'pending' => ['proses', 'dibatalkan'],
-            'proses'  => ['selesai', 'dibatalkan'],
+            'proses'  => ['dibatalkan'],
         ];
 
         $statusSaatIni   = $pesanan->status;
         $statusDiizinkan = $transisiValid[$statusSaatIni] ?? [];
 
-        if (!in_array($statusBaru, $statusDiizinkan)) {
+        if (! in_array($statusBaru, $statusDiizinkan, true)) {
             throw new \RuntimeException(
                 "Tidak dapat mengubah status dari '{$statusSaatIni}' ke '{$statusBaru}'."
+            );
+        }
+
+        // H10: blok cancel jika sudah ada pengiriman
+        if ($statusBaru === 'dibatalkan' && $pesanan->hasPengiriman()) {
+            throw new \RuntimeException(
+                'Pesanan yang sudah memiliki pengiriman tidak dapat dibatalkan. '.
+                'Reverse stok pengiriman terlebih dahulu jika diperlukan.'
             );
         }
 
         $pesanan->update(['status' => $statusBaru]);
 
         return $pesanan->fresh();
+    }
+
+    /**
+     * BR-PSN-13: Naikkan pending → proses saat ada aktivitas (bayar/ship pertama).
+     */
+    public function promoteToProsesIfPending(Pesanan $pesanan): void
+    {
+        $pesanan->refresh();
+
+        if ($pesanan->status === 'pending') {
+            $pesanan->update(['status' => 'proses']);
+        }
+    }
+
+    /**
+     * BR-PSN-10: Auto-selesai jika lunas + semua produk terkirim.
+     * Hanya dari status 'proses'.
+     */
+    public function evaluateCompletion(Pesanan $pesanan): void
+    {
+        $pesanan->refresh();
+        $pesanan->load('detailPesanan', 'pembayarans');
+
+        if ($pesanan->status !== 'proses') {
+            return;
+        }
+
+        if ($pesanan->isLunas() && $pesanan->isFullyShipped()) {
+            $pesanan->update(['status' => 'selesai']);
+        }
     }
 
     /**

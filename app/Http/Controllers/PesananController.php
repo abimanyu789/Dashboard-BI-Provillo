@@ -94,23 +94,39 @@ class PesananController extends Controller
     {
         $pesanan->load(['customer', 'createdBy', 'detailPesanan.produk', 'pembayarans']);
 
+        $totalDibayar = $pesanan->totalDibayar();
+        $sisaTagihan = $pesanan->sisaTagihan();
+
         return Inertia::render('pesanan/show', [
-            'pesanan'        => array_merge($pesanan->toArray(), [
-                'created_by_nama' => $pesanan->createdBy?->nama ?? 'Admin',
+            'pesanan' => array_merge($pesanan->toArray(), [
+                'created_by_nama' => $pesanan->createdBy?->nama ?? $pesanan->createdBy?->name ?? 'Admin',
             ]),
             'statusTransisi' => $this->getStatusTransisi($pesanan->status),
+            'ringkasanPembayaran' => [
+                'total' => (float) $pesanan->total,
+                'total_dibayar' => $totalDibayar,
+                'sisa_tagihan' => $sisaTagihan,
+                'status_pembayaran' => $pesanan->statusPembayaran(),
+            ],
+            'progressPengiriman' => $pesanan->progressPengiriman(),
         ]);
     }
 
     /**
-     * Form edit pesanan — hanya saat status pending.
+     * Form edit pesanan — diblok jika locked atau sudah ada pengiriman (H9).
      */
     public function edit(Pesanan $pesanan)
     {
-        if ($pesanan->isSelesai()) {
+        if ($pesanan->isLocked()) {
             return redirect()
                 ->route('pesanan.show', $pesanan)
-                ->with('error', 'Pesanan yang sudah selesai tidak dapat diedit.');
+                ->with('error', 'Pesanan yang sudah selesai/dibatalkan tidak dapat diedit.');
+        }
+
+        if ($pesanan->hasPengiriman()) {
+            return redirect()
+                ->route('pesanan.show', $pesanan)
+                ->with('error', 'Pesanan yang sudah memiliki pengiriman tidak dapat diedit.');
         }
 
         $pesanan->load('detailPesanan.produk');
@@ -123,15 +139,15 @@ class PesananController extends Controller
     }
 
     /**
-     * Update pesanan — hanya saat status pending.
+     * Update pesanan — diblok jika locked atau sudah ada pengiriman (H9).
      */
     public function update(PesananRequest $request, Pesanan $pesanan)
     {
-        if ($pesanan->isSelesai()) {
-            return back()->with('error', 'Pesanan yang sudah selesai tidak dapat diedit.');
+        try {
+            $this->service->updateWithDetails($pesanan, $request->validated());
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
         }
-
-        $this->service->updateWithDetails($pesanan, $request->validated());
 
         return redirect()
             ->route('pesanan.show', $pesanan)
@@ -154,11 +170,16 @@ class PesananController extends Controller
 
     /**
      * Hapus pesanan — hanya saat status pending/proses (BR-07).
+     * Diblok jika sudah ada pengiriman (H10).
      */
     public function destroy(Pesanan $pesanan)
     {
         if ($pesanan->isLocked()) {
             return back()->with('error', 'Pesanan berstatus selesai atau dibatalkan tidak dapat dihapus.');
+        }
+
+        if ($pesanan->hasPengiriman()) {
+            return back()->with('error', 'Pesanan yang sudah memiliki pengiriman tidak dapat dihapus.');
         }
 
         $nomor = $pesanan->nomor_pesanan;
@@ -191,12 +212,13 @@ class PesananController extends Controller
 
     /**
      * Kembalikan daftar status yang bisa ditransisi dari status saat ini.
+     * R1: 'selesai' tidak tersedia manual — hanya lewat auto-evaluate.
      */
     private function getStatusTransisi(string $status): array
     {
         return match ($status) {
             'pending' => ['proses', 'dibatalkan'],
-            'proses'  => ['selesai', 'dibatalkan'],
+            'proses'  => ['dibatalkan'],
             default   => [],
         };
     }

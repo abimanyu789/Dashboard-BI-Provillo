@@ -25,6 +25,8 @@ export type {
     StokProdukJadiShowProps,
     PengirimanFormData,
     PengirimanItemRow,
+    PesananOptionForPengiriman,
+    SisaPengirimanItem,
     StokProdukOption as ProdukJadiOption,
 } from './stok-produk-jadi';
 export type * from './pesanan';

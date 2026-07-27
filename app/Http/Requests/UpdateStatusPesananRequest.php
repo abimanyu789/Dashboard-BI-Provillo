@@ -13,8 +13,9 @@ class UpdateStatusPesananRequest extends FormRequest
 
     public function rules(): array
     {
+        // R1: 'selesai' dihapus dari input manual — hanya lewat auto-evaluate
         return [
-            'status' => ['required', 'string', 'in:pending,proses,selesai,dibatalkan'],
+            'status' => ['required', 'string', 'in:pending,proses,dibatalkan'],
         ];
     }
 
@@ -29,7 +30,7 @@ class UpdateStatusPesananRequest extends FormRequest
     {
         return [
             'status.required' => 'Status pesanan harus dipilih.',
-            'status.in'       => 'Status pesanan tidak valid.',
+            'status.in' => 'Status tidak valid. Status Selesai di-set otomatis saat lunas dan semua produk terkirim.',
         ];
     }
 }

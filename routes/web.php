@@ -79,6 +79,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('pesanan.update-status');
     Route::get('pesanan/{pesanan}/invoice', [PesananController::class, 'invoice'])
         ->name('pesanan.invoice');
+    Route::get('pesanan/{pesanan}/sisa-pengiriman', [StokProdukJadiController::class, 'sisaPengiriman'])
+        ->name('pesanan.sisa-pengiriman');
 
     // Pembayaran (inline dari detail pesanan)
     Route::post('pesanan/{pesanan}/pembayaran', [PembayaranController::class, 'store'])

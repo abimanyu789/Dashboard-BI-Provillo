@@ -114,7 +114,40 @@ export interface PesananEditProps {
     produks: PesananProdukOption[];
 }
 
+export type StatusPembayaran = 'belum_bayar' | 'sebagian' | 'lunas';
+export type StatusPengirimanItem = 'belum' | 'sebagian' | 'lengkap';
+
+export interface RingkasanPembayaran {
+    total: number;
+    total_dibayar: number;
+    sisa_tagihan: number;
+    status_pembayaran: StatusPembayaran;
+}
+
+export interface ProgressPengirimanItem {
+    produk_id: number;
+    kode_produk: string | null;
+    nama_produk: string | null;
+    qty_pesan: number;
+    qty_dikirim: number;
+    qty_sisa: number;
+    percent: number;
+    status: StatusPengirimanItem;
+}
+
+export interface ProgressPengiriman {
+    overall: {
+        qty_pesan: number;
+        qty_dikirim: number;
+        qty_sisa: number;
+        percent: number;
+    };
+    items: ProgressPengirimanItem[];
+}
+
 export interface PesananShowProps {
     pesanan: Pesanan;
     statusTransisi: StatusPesanan[];
+    ringkasanPembayaran: RingkasanPembayaran;
+    progressPengiriman: ProgressPengiriman;
 }

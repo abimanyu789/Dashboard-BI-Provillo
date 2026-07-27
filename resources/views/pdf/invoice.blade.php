@@ -353,10 +353,10 @@
                     <span class="info-value">{{ $pesanan->customer->alamat }}</span>
                 </div>
             @endif
-            <div class="info-row">
+            <!--<div class="info-row">
                 <span class="info-label">Jenis</span>
                 <span class="info-value">{{ strtoupper($pesanan->customer->jenis_customer) }}</span>
-            </div>
+            </div>-->
         </div>
         <div class="info-col-right">
             <div class="section-title">Detail Invoice</div>
