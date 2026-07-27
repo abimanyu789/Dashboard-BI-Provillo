@@ -1,10 +1,11 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, FileText, Pencil, Trash2, Receipt } from 'lucide-react';
+import { ArrowLeft, FileText, Pencil, Trash2, Truck } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { PesananDeleteDialog } from '@/components/pesanan/pesanan-delete-dialog';
 import { PesananStatusBadge } from '@/components/pesanan/pesanan-status-badge';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import {
     Select,
     SelectContent,
@@ -20,17 +21,63 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import pesanan from '@/routes/pesanan';
 import pembayaran from '@/routes/pembayaran';
+import pesanan from '@/routes/pesanan';
 import type {
-    PesananShowProps,
-    StatusPesanan,
     PembayaranFormData,
+    PesananShowProps,
+    ProgressPengirimanItem,
+    StatusPembayaran,
+    StatusPesanan,
 } from '@/types';
+
+const statusBayarConfig: Record<
+    StatusPembayaran,
+    { label: string; className: string }
+> = {
+    belum_bayar: {
+        label: 'Belum bayar',
+        className:
+            'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400',
+    },
+    sebagian: {
+        label: 'Sebagian',
+        className:
+            'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    },
+    lunas: {
+        label: 'Lunas',
+        className:
+            'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400',
+    },
+};
+
+const statusKirimConfig: Record<
+    ProgressPengirimanItem['status'],
+    { label: string; className: string }
+> = {
+    belum: {
+        label: 'Belum',
+        className:
+            'inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
+    },
+    sebagian: {
+        label: 'Sebagian',
+        className:
+            'inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    },
+    lengkap: {
+        label: 'Lengkap',
+        className:
+            'inline-flex items-center rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400',
+    },
+};
 
 export default function PesananShow({
     pesanan: item,
     statusTransisi,
+    ringkasanPembayaran,
+    progressPengiriman,
 }: PesananShowProps) {
     const formatRupiah = (value: string | number) =>
         new Intl.NumberFormat('id-ID', {
@@ -70,7 +117,14 @@ export default function PesananShow({
         dibatalkan: 'Dibatalkan',
     };
 
-    const isLocked = item.status === 'selesai';
+    const isLocked =
+        item.status === 'selesai' || item.status === 'dibatalkan';
+    const sisaTagihan = ringkasanPembayaran.sisa_tagihan;
+    const canAddPayment = !isLocked && sisaTagihan > 0.009;
+    const progressByProduk = new Map(
+        progressPengiriman.items.map((row) => [row.produk_id, row]),
+    );
+    const overall = progressPengiriman.overall;
 
     return (
         <>
@@ -89,8 +143,21 @@ export default function PesananShow({
                             <h1 className="text-2xl font-bold tracking-tight">
                                 {item.nomor_pesanan}
                             </h1>
-                            <div className="mt-1 flex items-center gap-2">
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
                                 <PesananStatusBadge status={item.status} />
+                                <span
+                                    className={
+                                        statusBayarConfig[
+                                            ringkasanPembayaran.status_pembayaran
+                                        ].className
+                                    }
+                                >
+                                    {
+                                        statusBayarConfig[
+                                            ringkasanPembayaran.status_pembayaran
+                                        ].label
+                                    }
+                                </span>
                                 <span className="text-sm text-muted-foreground">
                                     {formatDate(item.tanggal)}
                                 </span>
@@ -98,7 +165,6 @@ export default function PesananShow({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* Cetak Invoice — tersedia untuk semua status */}
                         <a
                             href={pesanan.invoice.url(item.id)}
                             target="_blank"
@@ -186,8 +252,8 @@ export default function PesananShow({
                                         Dibuat oleh
                                     </p>
                                     <p className="mt-1 font-medium">
-                                        {(item as any).created_by_nama ??
-                                            'Admin'}
+                                        {(item as { created_by_nama?: string })
+                                            .created_by_nama ?? 'Admin'}
                                     </p>
                                 </div>
                                 <div className="px-6 py-4">
@@ -211,11 +277,11 @@ export default function PesananShow({
                             </div>
                         </div>
 
-                        {/* Tabel Item */}
+                        {/* Tabel Item + progress kirim per produk */}
                         <div className="rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border">
                             <div className="border-b px-6 py-4">
                                 <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                                    Item Pesanan
+                                    Item & Progress Pengiriman
                                 </h2>
                             </div>
                             <Table>
@@ -226,7 +292,16 @@ export default function PesananShow({
                                             Harga
                                         </TableHead>
                                         <TableHead className="text-right">
-                                            Qty
+                                            Dipesan
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Dikirim
+                                        </TableHead>
+                                        <TableHead className="text-right">
+                                            Sisa
+                                        </TableHead>
+                                        <TableHead className="min-w-36">
+                                            Progress
                                         </TableHead>
                                         <TableHead className="text-right">
                                             Subtotal
@@ -235,116 +310,219 @@ export default function PesananShow({
                                 </TableHeader>
                                 <TableBody>
                                     {(item.detail_pesanan ?? []).map(
-                                        (detail) => (
-                                            <TableRow key={detail.id}>
-                                                <TableCell>
-                                                    <div className="font-medium">
-                                                        {detail.produk
-                                                            ?.nama_produk ??
-                                                            '-'}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {detail.produk
-                                                            ?.kode_produk ??
-                                                            '-'}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-right font-mono text-sm">
-                                                    {formatRupiah(detail.harga)}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    {detail.qty}
-                                                </TableCell>
-                                                <TableCell className="text-right font-mono text-sm font-medium">
-                                                    {formatRupiah(
-                                                        detail.subtotal,
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        ),
+                                        (detail) => {
+                                            const progress =
+                                                progressByProduk.get(
+                                                    detail.produk_id,
+                                                );
+                                            const qtyDikirim =
+                                                progress?.qty_dikirim ?? 0;
+                                            const qtySisa =
+                                                progress?.qty_sisa ??
+                                                detail.qty;
+                                            const percent =
+                                                progress?.percent ?? 0;
+                                            const statusKirim =
+                                                progress?.status ?? 'belum';
+
+                                            return (
+                                                <TableRow key={detail.id}>
+                                                    <TableCell>
+                                                        <div className="font-medium">
+                                                            {detail.produk
+                                                                ?.nama_produk ??
+                                                                '-'}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {detail.produk
+                                                                ?.kode_produk ??
+                                                                '-'}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-sm">
+                                                        {formatRupiah(
+                                                            detail.harga,
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-medium">
+                                                        {detail.qty}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {qtyDikirim}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        {qtySisa}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span
+                                                                    className={
+                                                                        statusKirimConfig[
+                                                                            statusKirim
+                                                                        ]
+                                                                            .className
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        statusKirimConfig[
+                                                                            statusKirim
+                                                                        ]
+                                                                            .label
+                                                                    }
+                                                                </span>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    {percent}%
+                                                                </span>
+                                                            </div>
+                                                            <Progress
+                                                                value={percent}
+                                                                className="h-1.5"
+                                                            />
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-sm font-medium">
+                                                        {formatRupiah(
+                                                            detail.subtotal,
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        },
                                     )}
                                 </TableBody>
                             </Table>
                         </div>
 
-                        {/* Section Form & Riwayat Pembayaran (Nested dalam Kolom Kiri) */}
+                        {/* Form & Riwayat Pembayaran */}
                         <div className="grid gap-6 md:grid-cols-3">
-                            {/* Form Tambah Pembayaran */}
-                            {!isLocked && (
+                            {canAddPayment && (
                                 <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border md:col-span-1">
-                                    <h2 className="mb-4 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                                    <h2 className="mb-1 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                         Tambah Pembayaran
                                     </h2>
-                                    <PembayaranForm pesananId={item.id} />
+                                    <p className="mb-4 text-xs text-muted-foreground">
+                                        Sisa tagihan:{' '}
+                                        <span className="font-medium text-foreground">
+                                            {formatRupiah(sisaTagihan)}
+                                        </span>
+                                    </p>
+                                    <PembayaranForm
+                                        pesananId={item.id}
+                                        sisaTagihan={sisaTagihan}
+                                    />
                                 </div>
                             )}
 
-                            {/* Tabel Riwayat Pembayaran */}
-                            <div className={`h-fit justify-self-start overflow-x-auto w-full md:w-fit max-w-full rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border ${isLocked ? 'md:col-span-3' : 'md:col-span-2'}`}>
+                            {!canAddPayment && !isLocked && (
+                                <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 text-sm text-muted-foreground dark:border-sidebar-border md:col-span-1">
+                                    Tagihan sudah lunas. Tidak ada sisa yang
+                                    bisa dibayar.
+                                </div>
+                            )}
+
+                            <div
+                                className={`h-fit w-full max-w-full justify-self-start overflow-x-auto rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border md:w-fit ${
+                                    canAddPayment || !isLocked
+                                        ? 'md:col-span-2'
+                                        : 'md:col-span-3'
+                                }`}
+                            >
                                 <div className="border-b px-6 py-4">
                                     <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                         Riwayat Pembayaran
                                     </h2>
                                 </div>
                                 {(item.pembayarans ?? []).length > 0 ? (
-                                    <table className="w-full md:w-max text-sm text-left">
+                                    <table className="w-full text-left text-sm md:w-max">
                                         <thead>
                                             <tr className="border-b text-muted-foreground">
-                                                <th className="px-6 py-3 font-medium whitespace-nowrap">Tanggal</th>
-                                                <th className="px-6 py-3 font-medium whitespace-nowrap text-center">Jenis</th>
-                                                <th className="px-6 py-3 font-medium whitespace-nowrap">Metode</th>
-                                                <th className="px-6 py-3 font-medium whitespace-nowrap text-right">Nominal</th>
-                                                <th className="px-6 py-3 font-medium">Keterangan</th>
-                                                <th className="px-6 py-3 w-12 text-right"></th>
+                                                <th className="px-6 py-3 font-medium whitespace-nowrap">
+                                                    Tanggal
+                                                </th>
+                                                <th className="px-6 py-3 text-center font-medium whitespace-nowrap">
+                                                    Jenis
+                                                </th>
+                                                <th className="px-6 py-3 font-medium whitespace-nowrap">
+                                                    Metode
+                                                </th>
+                                                <th className="px-6 py-3 text-right font-medium whitespace-nowrap">
+                                                    Nominal
+                                                </th>
+                                                <th className="px-6 py-3 font-medium">
+                                                    Keterangan
+                                                </th>
+                                                <th className="w-12 px-6 py-3 text-right"></th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {(item.pembayarans ?? []).map((p) => (
-                                                <tr key={p.id} className="border-b last:border-0">
-                                                    <td className="px-6 py-3 whitespace-nowrap">
-                                                        {p.tanggal
-                                                            ? new Date(p.tanggal).toLocaleDateString('id-ID', {
-                                                                  day: 'numeric',
-                                                                  month: 'short',
-                                                                  year: 'numeric',
-                                                              })
-                                                            : '-'}
-                                                    </td>
-                                                    <td className="px-6 py-3 text-center capitalize whitespace-nowrap">
-                                                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                                                            {p.jenis_pembayaran.toUpperCase()}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
-                                                        {p.metode ?? '-'}
-                                                    </td>
-                                                    <td className="px-6 py-3 text-right font-mono font-semibold text-green-600 dark:text-green-400 whitespace-nowrap">
-                                                        {new Intl.NumberFormat('id-ID', {
-                                                            style: 'currency',
-                                                            currency: 'IDR',
-                                                            minimumFractionDigits: 0,
-                                                        }).format(Number(p.nominal))}
-                                                    </td>
-                                                    <td className="px-6 py-3 text-muted-foreground max-w-[200px] md:max-w-[300px] truncate" title={p.keterangan ?? undefined}>
-                                                        {p.keterangan ?? '-'}
-                                                    </td>
-                                                    <td className="px-6 py-3 text-right">
-                                                        {!isLocked && (
-                                                            <button
-                                                                onClick={() =>
-                                                                    router.delete(pembayaran.destroy.url(p.id), {
-                                                                        preserveScroll: true,
-                                                                    })
-                                                                }
-                                                                className="text-muted-foreground hover:text-destructive"
-                                                                title="Hapus pembayaran"
-                                                            >
-                                                                <Trash2 className="size-4" />
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {(item.pembayarans ?? []).map(
+                                                (p) => (
+                                                    <tr
+                                                        key={p.id}
+                                                        className="border-b last:border-0"
+                                                    >
+                                                        <td className="px-6 py-3 whitespace-nowrap">
+                                                            {p.tanggal
+                                                                ? new Date(
+                                                                      p.tanggal,
+                                                                  ).toLocaleDateString(
+                                                                      'id-ID',
+                                                                      {
+                                                                          day: 'numeric',
+                                                                          month: 'short',
+                                                                          year: 'numeric',
+                                                                      },
+                                                                  )
+                                                                : '-'}
+                                                        </td>
+                                                        <td className="px-6 py-3 text-center capitalize whitespace-nowrap">
+                                                            <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+                                                                {p.jenis_pembayaran.toUpperCase()}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
+                                                            {p.metode ?? '-'}
+                                                        </td>
+                                                        <td className="px-6 py-3 text-right font-mono font-semibold whitespace-nowrap text-green-600 dark:text-green-400">
+                                                            {formatRupiah(
+                                                                p.nominal,
+                                                            )}
+                                                        </td>
+                                                        <td
+                                                            className="max-w-50 truncate px-6 py-3 text-muted-foreground md:max-w-75"
+                                                            title={
+                                                                p.keterangan ??
+                                                                undefined
+                                                            }
+                                                        >
+                                                            {p.keterangan ??
+                                                                '-'}
+                                                        </td>
+                                                        <td className="px-6 py-3 text-right">
+                                                            {!isLocked && (
+                                                                <button
+                                                                    onClick={() =>
+                                                                        router.delete(
+                                                                            pembayaran.destroy.url(
+                                                                                p.id,
+                                                                            ),
+                                                                            {
+                                                                                preserveScroll:
+                                                                                    true,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    className="text-muted-foreground hover:text-destructive"
+                                                                    title="Hapus pembayaran"
+                                                                >
+                                                                    <Trash2 className="size-4" />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ),
+                                            )}
                                         </tbody>
                                     </table>
                                 ) : (
@@ -358,12 +536,16 @@ export default function PesananShow({
 
                     {/* Kolom kanan — ringkasan & status */}
                     <div className="space-y-6">
-                        {/* Update Status */}
                         {statusTransisi.length > 0 && (
                             <div className="rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border">
-                                <h2 className="mb-4 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                                <h2 className="mb-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                     Ubah Status
                                 </h2>
+                                <p className="mb-4 text-xs text-muted-foreground">
+                                    Status <strong>Selesai</strong> di-set
+                                    otomatis saat lunas dan semua produk
+                                    terkirim.
+                                </p>
                                 <Select onValueChange={handleUpdateStatus}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Pilih status baru..." />
@@ -379,11 +561,72 @@ export default function PesananShow({
                             </div>
                         )}
 
+                        {/* Progress Pengiriman overall */}
+                        <div className="rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border">
+                            <div className="mb-4 flex items-center gap-2">
+                                <Truck className="size-4 text-muted-foreground" />
+                                <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                                    Progress Pengiriman
+                                </h2>
+                            </div>
+                            <div className="space-y-3 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                        Qty dipesan
+                                    </span>
+                                    <span className="font-medium">
+                                        {overall.qty_pesan}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                        Qty dikirim
+                                    </span>
+                                    <span className="font-medium">
+                                        {overall.qty_dikirim}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                        Qty sisa
+                                    </span>
+                                    <span className="font-medium">
+                                        {overall.qty_sisa}
+                                    </span>
+                                </div>
+                                <div className="space-y-1.5 border-t pt-3">
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Penyelesaian</span>
+                                        <span>{overall.percent}%</span>
+                                    </div>
+                                    <Progress
+                                        value={overall.percent}
+                                        className="h-2"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Ringkasan Pembayaran */}
                         <div className="rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border">
-                            <h2 className="mb-4 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                                Ringkasan Pembayaran
-                            </h2>
+                            <div className="mb-4 flex items-center justify-between gap-2">
+                                <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
+                                    Ringkasan Pembayaran
+                                </h2>
+                                <span
+                                    className={
+                                        statusBayarConfig[
+                                            ringkasanPembayaran.status_pembayaran
+                                        ].className
+                                    }
+                                >
+                                    {
+                                        statusBayarConfig[
+                                            ringkasanPembayaran.status_pembayaran
+                                        ].label
+                                    }
+                                </span>
+                            </div>
                             <div className="space-y-3 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-muted-foreground">
@@ -417,6 +660,22 @@ export default function PesananShow({
                                         {formatRupiah(item.total)}
                                     </span>
                                 </div>
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">
+                                        Sudah dibayar
+                                    </span>
+                                    <span className="font-mono text-green-600 dark:text-green-400">
+                                        {formatRupiah(
+                                            ringkasanPembayaran.total_dibayar,
+                                        )}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between border-t pt-3 font-semibold">
+                                    <span>Sisa tagihan</span>
+                                    <span className="font-mono text-lg">
+                                        {formatRupiah(sisaTagihan)}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -428,7 +687,13 @@ export default function PesananShow({
 
 // ─── Inline form tambah pembayaran ───────────────────────────────────────────
 
-function PembayaranForm({ pesananId }: { pesananId: number }) {
+function PembayaranForm({
+    pesananId,
+    sisaTagihan,
+}: {
+    pesananId: number;
+    sisaTagihan: number;
+}) {
     const { data, setData, post, processing, errors, reset } =
         useForm<PembayaranFormData>({
             tanggal: new Date().toISOString().slice(0, 10),
@@ -437,7 +702,13 @@ function PembayaranForm({ pesananId }: { pesananId: number }) {
             metode: '',
             keterangan: '',
         });
-    const [open, setOpen] = useState(false);
+
+    // Auto-isi nominal = sisa saat pilih pelunasan
+    useEffect(() => {
+        if (data.jenis_pembayaran === 'pelunasan' && sisaTagihan > 0) {
+            setData('nominal', Math.round(sisaTagihan));
+        }
+    }, [data.jenis_pembayaran, sisaTagihan, setData]);
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -445,18 +716,18 @@ function PembayaranForm({ pesananId }: { pesananId: number }) {
             preserveScroll: true,
             onSuccess: () => {
                 reset();
-                setOpen(false);
             },
         });
     };
 
+    const maxNominal = Math.max(0, Math.round(sisaTagihan));
+
     return (
-        <form
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-3"
-        >
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Tanggal</label>
+                <label className="text-xs font-medium text-foreground">
+                    Tanggal
+                </label>
                 <input
                     type="date"
                     value={data.tanggal}
@@ -465,12 +736,19 @@ function PembayaranForm({ pesananId }: { pesananId: number }) {
                 />
             </div>
             <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Jenis Pembayaran</label>
+                <label className="text-xs font-medium text-foreground">
+                    Jenis Pembayaran
+                </label>
                 <Select
                     value={data.jenis_pembayaran}
-                    onValueChange={(val: any) => setData('jenis_pembayaran', val)}
+                    onValueChange={(val: string) =>
+                        setData(
+                            'jenis_pembayaran',
+                            val as PembayaranFormData['jenis_pembayaran'],
+                        )
+                    }
                 >
-                    <SelectTrigger className="w-full h-8 text-sm">
+                    <SelectTrigger className="h-8 w-full text-sm">
                         <SelectValue placeholder="Pilih Jenis..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -487,37 +765,53 @@ function PembayaranForm({ pesananId }: { pesananId: number }) {
                 <input
                     type="number"
                     min="1"
+                    max={maxNominal}
                     step="1"
                     value={data.nominal}
                     onChange={(e) =>
                         setData(
                             'nominal',
-                            e.target.value === '' ? '' : Number(e.target.value),
+                            e.target.value === ''
+                                ? ''
+                                : Number(e.target.value),
                         )
                     }
                     placeholder="0"
                     className="h-8 w-full rounded-md border bg-background px-3 text-sm"
                 />
+                <p className="text-xs text-muted-foreground">
+                    Maksimal {new Intl.NumberFormat('id-ID', {
+                        style: 'currency',
+                        currency: 'IDR',
+                        minimumFractionDigits: 0,
+                    }).format(maxNominal)}
+                </p>
             </div>
             <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Metode Pembayaran</label>
+                <label className="text-xs font-medium text-foreground">
+                    Metode Pembayaran
+                </label>
                 <Select
                     value={data.metode}
                     onValueChange={(val) => setData('metode', val)}
                 >
-                    <SelectTrigger className="w-full h-8 text-sm">
+                    <SelectTrigger className="h-8 w-full text-sm">
                         <SelectValue placeholder="Pilih Metode..." />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="Tunai">Tunai</SelectItem>
-                        <SelectItem value="Transfer Bank">Transfer Bank</SelectItem>
+                        <SelectItem value="Transfer Bank">
+                            Transfer Bank
+                        </SelectItem>
                         <SelectItem value="QRIS">QRIS</SelectItem>
                         <SelectItem value="E-Wallet">E-Wallet</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
             <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Keterangan</label>
+                <label className="text-xs font-medium text-foreground">
+                    Keterangan
+                </label>
                 <input
                     type="text"
                     value={data.keterangan}
@@ -527,11 +821,16 @@ function PembayaranForm({ pesananId }: { pesananId: number }) {
                 />
             </div>
 
-            <Button type="submit" size="sm" className="mt-1 w-full" disabled={processing}>
+            <Button
+                type="submit"
+                size="sm"
+                className="mt-1 w-full"
+                disabled={processing || maxNominal <= 0}
+            >
                 {processing ? 'Menyimpan...' : 'Simpan Pembayaran'}
             </Button>
             {Object.values(errors).filter(Boolean).length > 0 && (
-                <p className="w-full text-sm text-destructive mt-1">
+                <p className="mt-1 w-full text-sm text-destructive">
                     {Object.values(errors)[0]}
                 </p>
             )}

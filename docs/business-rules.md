@@ -48,10 +48,15 @@ instruksi eksplisit dari pemilik project.
 - BR-03 Satu pesanan dapat terdiri dari lebih dari satu produk.
 - BR-04 Qty produk harus lebih dari nol.
 - BR-05 Status awal pesanan adalah Pending.
-- BR-06 Status dapat diperbarui menjadi Proses, Done, atau Cancel.
+- BR-06 Status dapat diperbarui menjadi Proses atau Cancel secara manual. Transisi ke Selesai **tidak manual** (lihat BR-PSN-10).
 - BR-07 Pesanan berstatus Done/Cancel tidak dapat dihapus.
 - BR-08 Invoice hanya bisa dicetak lewat menu Detail Pesanan; nomor invoice unik & otomatis.
 - BR-09 Setiap pesanan memiliki jenis pembayaran yang disepakati saat order (DP, Lunas, Bertahap, COD, Termin). Jenis pembayaran ini berbeda dari transaksi pembayaran aktual yang dicatat di tabel pembayaran.
+- BR-PBY-10 Nominal pembayaran tidak boleh melebihi sisa tagihan (`total − Σ nominal`). Melanggar → reject.
+- BR-PBY-11 Status bayar bersifat **derived** (bukan kolom DB): `belum_bayar` / `sebagian` / `lunas` dari `Σ nominal` vs `total`.
+- BR-PSN-10 Auto `status = selesai` **hanya** jika (a) lunas **dan** (b) semua item pesanan sudah terkirim penuh. Status Selesai tidak tersedia di dropdown manual.
+- BR-PSN-12 Pembatalan pesanan yang sudah punya pengiriman diblok (perlu reverse stok dulu).
+- BR-PSN-13 Auto `pending → proses` saat aktivitas bayar/ship pertama (kurangi lupa ubah status).
 
 ## Stok Bahan Baku (KF-11, KF-16)
 - BR-01 Stok tidak boleh negatif.
@@ -66,6 +71,11 @@ instruksi eksplisit dari pemilik project.
 - BR-03 Pengurangan stok saat admin mencatat pengiriman ke customer.
 - BR-04 Setiap perubahan stok wajib tercatat di riwayat (tabel stok_produk_jadi).
 - BR-05 Penyesuaian stok hanya bisa dilakukan admin.
+- BR-KIR-01 Pengiriman wajib pilih pesanan (status `pending`/`proses`, tidak locked).
+- BR-KIR-02 Produk pengiriman harus ada di `detail_pesanan` pesanan tsb.
+- BR-KIR-03 Qty kirim per produk ≤ `qty_pesan − qty_sudah_dikirim` untuk pesanan itu.
+- BR-KIR-04 Qty kirim juga tetap ≤ stok produk jadi tersedia (BR-01 tetap berlaku).
+- Log pengiriman menyimpan `stok_produk_jadi.pesanan_id` (nullable; diisi HANYA untuk `jenis_transaksi = pengiriman`) agar progress kirim per pesanan bisa dihitung akurat.
 
 ## Produksi (KF-13, KF-14, KF-15, KF-16) — modul paling kompleks
 - BR-01 Status awal produksi adalah Draft.

@@ -199,6 +199,7 @@ supaya file ini diperbaiki lagi.
 |---|---|---|
 | id | bigint unsigned | PK |
 | produk_id | bigint unsigned | NOT NULL, FK → `produk.id` (RESTRICT) |
+| pesanan_id | bigint unsigned | **nullable**, FK → `pesanan.id` (RESTRICT). Diisi HANYA saat `jenis_transaksi = pengiriman`; null untuk produksi / rollback / penyesuaian |
 | jenis_transaksi | enum(`produksi`,`pengiriman`,`rollback`,`penyesuaian`) | NOT NULL |
 | qty | int | NOT NULL — selisih perubahan |
 | stok_sebelum | int | NOT NULL |
@@ -212,6 +213,7 @@ supaya file ini diperbaiki lagi.
 - `customer` 1—n `pesanan` (pesanan.customer_id, RESTRICT)
 - `users` 1—n `pesanan`, `produksi`, `arus_kas`, `stok_bahan_baku`, `stok_produk_jadi` (created_by, RESTRICT)
 - `pesanan` 1—n `detail_pesanan` (RESTRICT)
+- `pesanan` 1—n `stok_produk_jadi` (pesanan_id nullable — diisi saat pengiriman, RESTRICT)
 - `produk` 1—n `detail_pesanan` (RESTRICT)
 - `produk` n—1 `bom_categorie` (bom_category_id, nullable, RESTRICT)
 - `bom_categorie` 1—n `bom_detail` (RESTRICT)
@@ -625,6 +627,7 @@ CREATE TABLE stok_produk_jadi (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 
     produk_id BIGINT UNSIGNED NOT NULL,
+    pesanan_id BIGINT UNSIGNED NULL,  -- diisi HANYA untuk pengiriman
 
     jenis_transaksi ENUM(
         'produksi',
@@ -647,6 +650,10 @@ CREATE TABLE stok_produk_jadi (
 
     FOREIGN KEY (produk_id)
         REFERENCES produk(id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (pesanan_id)
+        REFERENCES pesanan(id)
         ON DELETE RESTRICT,
 
     FOREIGN KEY (created_by)

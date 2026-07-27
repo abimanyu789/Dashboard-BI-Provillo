@@ -43,13 +43,14 @@ class PembayaranService
                 );
             }
 
-            $sisa = $this->pesananService->sisaTagihan($pesanan);
+            $sisa = $pesanan->sisaTagihan();
             $nominal = round((float) $data['nominal'], 2);
 
             if ($nominal <= 0) {
                 throw new \RuntimeException('Nominal harus lebih dari 0.');
             }
 
+            // BR-PBY-10: guard kedua di dalam transaction (race-safe)
             if ($nominal > $sisa + 0.0001) {
                 $sisaFormatted = number_format($sisa, 0, ',', '.');
                 throw new \RuntimeException(
@@ -80,7 +81,8 @@ class PembayaranService
                 'bukti_transaksi'   => null,
             ]);
 
-            // Aktivitas bayar → promote proses + cek auto-selesai
+            // BR-PSN-13 + BR-PSN-10: promote pending→proses, lalu evaluasi auto-selesai
+            $this->pesananService->promoteToProsesIfPending($pesanan);
             $this->pesananService->evaluateCompletion($pesanan);
 
             return $pembayaran->load('arusKas');
@@ -103,9 +105,10 @@ class PembayaranService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            // H5: blok hapus jika pesanan sudah selesai
             $this->pesananService->assertPembayaranDeletable($pesanan);
 
-            // Hapus arus kas terkait dulu (FK nullable RESTRICT)
+            // Hapus arus kas terkait dulu (FK RESTRICT)
             $pembayaran->arusKas()->delete();
             $pembayaran->delete();
         });

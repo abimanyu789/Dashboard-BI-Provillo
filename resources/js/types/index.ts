@@ -27,6 +27,7 @@ export type {
     PengirimanItemRow,
     PesananOptionForPengiriman,
     SisaPengirimanItem,
+    StokProdukOption,
     StokProdukOption as ProdukJadiOption,
 } from './stok-produk-jadi';
 export type * from './pesanan';

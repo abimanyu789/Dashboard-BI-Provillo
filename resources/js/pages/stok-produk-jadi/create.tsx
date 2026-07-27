@@ -246,10 +246,10 @@ export default function StokProdukJadiCreate({
                                     Pesanan <span className="text-destructive">*</span>
                                 </Label>
                                 <SearchableCombobox
-                                    options={pesananComboboxOptions}
+                                    items={pesananComboboxOptions}
                                     value={data.pesanan_id !== '' ? String(data.pesanan_id) : ''}
                                     onValueChange={(v) =>
-                                        setData('pesanan_id', v ? Number(v) : '')
+                                        setData('pesanan_id', v !== '' ? Number(String(v)) : '')
                                     }
                                     placeholder="Pilih pesanan..."
                                     searchPlaceholder="Cari nomor pesanan / customer..."
@@ -335,7 +335,7 @@ export default function StokProdukJadiCreate({
                                                     Produk
                                                 </span>
                                                 <SearchableCombobox
-                                                    options={availableOptions}
+                                                    items={availableOptions}
                                                     value={
                                                         row.produk_id !== ''
                                                             ? String(row.produk_id)
@@ -345,7 +345,7 @@ export default function StokProdukJadiCreate({
                                                         updateRow(
                                                             index,
                                                             'produk_id',
-                                                            v ? Number(v) : '',
+                                                            v !== '' ? Number(String(v)) : '',
                                                         )
                                                     }
                                                     placeholder={

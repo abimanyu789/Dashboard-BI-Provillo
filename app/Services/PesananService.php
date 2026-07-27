@@ -153,7 +153,7 @@ class PesananService
     public function evaluateCompletion(Pesanan $pesanan): void
     {
         $pesanan->refresh();
-        $pesanan->load('detailPesanan', 'pembayarans');
+        $pesanan->loadMissing('detailPesanan', 'pembayarans');
 
         if ($pesanan->status !== 'proses') {
             return;
@@ -161,6 +161,26 @@ class PesananService
 
         if ($pesanan->isLunas() && $pesanan->isFullyShipped()) {
             $pesanan->update(['status' => 'selesai']);
+        }
+    }
+
+    /**
+     * H5: Pembayaran tidak boleh dihapus jika pesanan sudah selesai.
+     *
+     * @throws \RuntimeException
+     */
+    public function assertPembayaranDeletable(Pesanan $pesanan): void
+    {
+        if ($pesanan->isSelesai()) {
+            throw new \RuntimeException(
+                'Pembayaran pada pesanan yang sudah selesai tidak dapat dihapus.'
+            );
+        }
+
+        if ($pesanan->isDibatalkan()) {
+            throw new \RuntimeException(
+                'Pembayaran pada pesanan yang dibatalkan tidak dapat dihapus.'
+            );
         }
     }
 
