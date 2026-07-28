@@ -13,6 +13,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { stokBahanTransaksiLabel } from '@/lib/domain-labels';
 import stokBahanBaku from '@/routes/stok-bahan-baku';
 import type { RestockFormData, RestockItemRow, StokBahanBakuCreateProps } from '@/types';
 
@@ -132,7 +133,7 @@ export default function StokBahanBakuCreate({
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="restock">Restock</SelectItem>
+                                    <SelectItem value="restock">Penambahan Stok</SelectItem>
                                     <SelectItem value="penyesuaian">Penyesuaian Stok</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -263,7 +264,7 @@ export default function StokBahanBakuCreate({
                                                 {/* Qty */}
                                                 <div className="flex flex-col gap-1">
                                                     <span className="text-xs font-medium text-muted-foreground sm:hidden">
-                                                        {isRestock ? 'Jumlah Restock' : 'Jumlah Penyesuaian'}
+                                                        {isRestock ? 'Jumlah Penambahan Stok' : 'Jumlah Penyesuaian'}
                                                     </span>
                                                     <Input
                                                         type="number"

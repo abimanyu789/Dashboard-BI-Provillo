@@ -3,6 +3,7 @@
 namespace App\Reports;
 
 use App\Models\StokBahanBaku;
+use App\Support\DomainLabels;
 use Illuminate\Support\Collection;
 
 class StokBahanBakuReport extends BaseReport
@@ -51,7 +52,7 @@ class StokBahanBakuReport extends BaseReport
                 'nama_bahan'       => $s->bahanBaku?->nama_bahan ?? '-',
                 'kode_bahan'       => $s->bahanBaku?->kode_bahan ?? '-',
                 'satuan'           => $s->bahanBaku?->satuan ?? '-',
-                'jenis_transaksi'  => $s->jenis_transaksi,
+                'jenis_transaksi'  => DomainLabels::stokBahanTransaksi($s->jenis_transaksi),
                 'qty'              => (float) $s->qty,
                 'stok_sebelum'     => (float) $s->stok_sebelum,
                 'stok_sesudah'     => (float) $s->stok_sesudah,

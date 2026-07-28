@@ -20,6 +20,8 @@ export type {
 export type {
     JenisTransaksiProduk,
     StokProdukJadi,
+    StokProdukCacatRow,
+    StokProdukTab,
     StokProdukJadiIndexProps,
     StokProdukJadiCreateProps,
     StokProdukJadiShowProps,

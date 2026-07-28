@@ -6,15 +6,30 @@ export type JenisTransaksiStok =
 export interface StokBahanBaku {
     id: number;
     bahan_baku_id: number;
+    produksi_pemakaian_bahan_id?: number | null;
     jenis_transaksi: JenisTransaksiStok;
+    jenis_transaksi_label?: string;
     qty: number;
     stok_sebelum: number;
     stok_sesudah: number;
     keterangan: string | null;
+    created_by?: number | null;
     created_at: string;
     updated_at: string;
+    // Audit trail fields from controller transform
+    sumber?: string;
+    produksi_id?: number | null;
+    dicatat_oleh?: string | null;
     // Relasi
     bahan_baku?: BahanBaku;
+    material_movement?: {
+        id: number;
+        produksi_id: number;
+        movement_type: string;
+        produksi?: {
+            id: number;
+        } | null;
+    } | null;
 }
 
 export interface BahanBakuOption {

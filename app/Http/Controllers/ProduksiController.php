@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BulkMaterialIssueRequest;
 use App\Http\Requests\InputProgressRequest;
 use App\Http\Requests\MaterialMovementRequest;
 use App\Http\Requests\ProduksiRequest;
 use App\Http\Requests\UpdateQcDispositionRequest;
+use App\Support\DomainLabels;
 use App\Models\BahanBaku;
 use App\Models\DetailProduksi;
 use App\Models\Karyawan;
@@ -260,7 +262,8 @@ class ProduksiController extends Controller
     }
 
     /**
-     * Mulai produksi — potong stok bahan baku, ubah status draft → proses.
+     * Mulai produksi — catat rencana kebutuhan BOM, ubah status draft → proses.
+     * Stok bahan baku belum berkurang sampai bahan dikeluarkan (issued/additional).
      */
     public function mulai(Produksi $produksi)
     {
@@ -272,7 +275,7 @@ class ProduksiController extends Controller
 
         return back()->with(
             'success',
-            'Produksi berhasil dimulai. Kebutuhan BOM dicatat tanpa pemotongan stok otomatis.',
+            'Produksi berhasil dimulai. Kebutuhan bahan sudah dihitung, tetapi stok belum dikurangi. Keluarkan bahan dari gudang untuk mencatat perubahan stok.',
         );
     }
 
@@ -315,7 +318,48 @@ class ProduksiController extends Controller
     public function materialMovement(MaterialMovementRequest $request, Produksi $produksi)
     {
         try {
-            $this->materialService->recordMovement(
+            $movement = $this->materialService->recordMovement(
+                $produksi,
+                $request->validated(),
+                auth()->id(),
+            )->load(['bahanBaku', 'stokHistory']);
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $movementLabel = DomainLabels::materialMovement($movement->movement_type);
+        $namaBahan = $movement->bahanBaku?->nama_bahan ?? 'Bahan';
+        $qty = number_format((float) $movement->qty, 2, ',', '.');
+
+        if ($movement->stokHistory !== null) {
+            $sebelum = number_format((float) $movement->stokHistory->stok_sebelum, 2, ',', '.');
+            $sesudah = number_format((float) $movement->stokHistory->stok_sesudah, 2, ',', '.');
+
+            return back()->with(
+                'success',
+                "{$movementLabel}: {$namaBahan} qty {$qty}. Stok {$sebelum} → {$sesudah}. Produksi #{$produksi->id}.",
+            );
+        }
+
+        $note = match ($movement->movement_type) {
+            'consumed' => 'Menandai bahan sebagai terpakai tidak mengurangi stok kembali.',
+            'planned' => 'Rencana kebutuhan tidak mengubah stok.',
+            default => 'Tidak ada perubahan stok gudang.',
+        };
+
+        return back()->with(
+            'success',
+            "{$movementLabel}: {$namaBahan} qty {$qty}. {$note} Produksi #{$produksi->id}.",
+        );
+    }
+
+    /**
+     * Pengeluaran bahan massal dari gudang untuk produksi aktif.
+     */
+    public function bulkMaterialIssue(BulkMaterialIssueRequest $request, Produksi $produksi)
+    {
+        try {
+            $movements = $this->materialService->recordBulkIssue(
                 $produksi,
                 $request->validated(),
                 auth()->id(),
@@ -324,7 +368,14 @@ class ProduksiController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', 'Pergerakan bahan berhasil dicatat dan riwayat stok diperbarui.');
+        $count = count($movements);
+        $totalQty = collect($movements)->sum(fn ($m) => (float) $m->qty);
+        $totalQtyLabel = number_format($totalQty, 2, ',', '.');
+
+        return back()->with(
+            'success',
+            "Berhasil mengeluarkan {$count} bahan untuk Produksi #{$produksi->id} (total qty {$totalQtyLabel}). Riwayat stok bahan baku telah diperbarui.",
+        );
     }
 
     public function updateQcDisposition(

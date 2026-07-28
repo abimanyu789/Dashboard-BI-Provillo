@@ -21,10 +21,12 @@ import type {
     WageBasis,
 } from '@/types';
 
+import { qcDispositionLabel, qcStatusLabel } from '@/lib/domain-labels';
+
 const dispositionLabels: Record<QcDisposition, string> = {
-    rework: 'Rework',
-    jual_cacat: 'Jual cacat',
-    dimusnahkan: 'Dimusnahkan',
+    rework: qcDispositionLabel('rework'),
+    jual_cacat: qcDispositionLabel('jual_cacat'),
+    dimusnahkan: qcDispositionLabel('dimusnahkan'),
 };
 
 function LegacyDispositionForm({
@@ -86,9 +88,9 @@ function LegacyDispositionForm({
                         <SelectValue placeholder="Pilih disposisi..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="rework">Rework</SelectItem>
-                        <SelectItem value="jual_cacat">Jual cacat</SelectItem>
-                        <SelectItem value="dimusnahkan">Dimusnahkan</SelectItem>
+                        <SelectItem value="rework">{dispositionLabels.rework}</SelectItem>
+                        <SelectItem value="jual_cacat">{dispositionLabels.jual_cacat}</SelectItem>
+                        <SelectItem value="dimusnahkan">{dispositionLabels.dimusnahkan}</SelectItem>
                     </SelectContent>
                 </Select>
                 {errors.disposisi_qc && (
@@ -127,23 +129,27 @@ export function QcHistoryPanel({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 {[
                     [
-                        'Lolos normal',
+                        qcStatusLabel('lolos'),
                         qcSummary.lolos,
                         'text-green-600 dark:text-green-400',
                     ],
-                    ['Tidak lolos', qcSummary.tidak_lolos, 'text-destructive'],
                     [
-                        'Rework aktif',
+                        qcStatusLabel('tidak_lolos'),
+                        qcSummary.tidak_lolos,
+                        'text-destructive',
+                    ],
+                    [
+                        'Perbaikan Ulang Aktif',
                         qcSummary.rework_aktif,
                         'text-amber-600 dark:text-amber-400',
                     ],
                     [
-                        'Jual cacat',
+                        qcDispositionLabel('jual_cacat'),
                         qcSummary.jual_cacat,
                         'text-orange-600 dark:text-orange-400',
                     ],
                     [
-                        'Dimusnahkan',
+                        qcDispositionLabel('dimusnahkan'),
                         qcSummary.dimusnahkan,
                         'text-muted-foreground',
                     ],
@@ -166,8 +172,8 @@ export function QcHistoryPanel({
                 <div className="rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border">
                     <div className="border-b px-6 py-4">
                         <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                            <RotateCcw className="size-4" /> Antrean Rework
-                            Aktif
+                            <RotateCcw className="size-4" /> Antrean Perbaikan
+                            Ulang Aktif
                         </h2>
                     </div>
                     {activeRework.length === 0 ? (
@@ -242,7 +248,7 @@ export function QcHistoryPanel({
             <div className="rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border">
                 <div className="border-b px-6 py-4">
                     <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-                        <History className="size-4" /> Riwayat QC & Rework
+                        <History className="size-4" /> Riwayat QC & Disposisi
                     </h2>
                 </div>
                 {(produksi.detail_produksi ?? []).length === 0 ? (

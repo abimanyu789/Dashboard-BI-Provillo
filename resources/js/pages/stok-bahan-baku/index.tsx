@@ -27,6 +27,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { stokBahanTransaksiLabel } from '@/lib/domain-labels';
+import produksiRoute from '@/routes/produksi';
 import stokBahanBaku from '@/routes/stok-bahan-baku';
 import type { JenisTransaksiStok, StokBahanBakuIndexProps } from '@/types';
 
@@ -166,10 +168,10 @@ export default function StokBahanBakuIndex({
                 variant: 'default' | 'secondary' | 'destructive' | 'outline';
             }
         > = {
-            restock: { label: 'Restock', variant: 'default' },
-            produksi: { label: 'Produksi', variant: 'secondary' },
-            rollback: { label: 'Rollback', variant: 'outline' },
-            penyesuaian: { label: 'Penyesuaian', variant: 'outline' },
+            restock: { label: stokBahanTransaksiLabel('restock'), variant: 'default' },
+            produksi: { label: stokBahanTransaksiLabel('produksi'), variant: 'secondary' },
+            rollback: { label: stokBahanTransaksiLabel('rollback'), variant: 'outline' },
+            penyesuaian: { label: stokBahanTransaksiLabel('penyesuaian'), variant: 'outline' },
         };
         const config = map[jenis] ?? {
             label: jenis,
@@ -260,16 +262,16 @@ export default function StokBahanBakuIndex({
                                         Semua Jenis
                                     </SelectItem>
                                     <SelectItem value="restock">
-                                        Restock
+                                        Penambahan Stok
                                     </SelectItem>
                                     <SelectItem value="produksi">
-                                        Produksi
+                                        Pengeluaran untuk Produksi
                                     </SelectItem>
                                     <SelectItem value="rollback">
-                                        Rollback
+                                        Pengembalian dari Produksi
                                     </SelectItem>
                                     <SelectItem value="penyesuaian">
-                                        Penyesuaian
+                                        Penyesuaian Stok
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
@@ -328,6 +330,9 @@ export default function StokBahanBakuIndex({
                                 {sortableHead('qty', 'Qty')}
                                 {sortableHead('stok_sebelum', 'Stok Sebelum')}
                                 {sortableHead('stok_sesudah', 'Stok Sesudah')}
+                                <TableHead>Sumber</TableHead>
+                                <TableHead>No. Produksi</TableHead>
+                                <TableHead>Dicatat Oleh</TableHead>
                                 <TableHead>Keterangan</TableHead>
                                 <TableHead className="w-16 text-right">
                                     Aksi
@@ -338,7 +343,7 @@ export default function StokBahanBakuIndex({
                             {riwayat.data.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={9}
+                                        colSpan={12}
                                         className="py-12 text-center text-muted-foreground"
                                     >
                                         Belum ada riwayat stok.
@@ -382,6 +387,28 @@ export default function StokBahanBakuIndex({
                                             </TableCell>
                                             <TableCell className="text-right font-mono font-medium">
                                                 {formatNumber(item.stok_sesudah)}
+                                            </TableCell>
+                                            <TableCell className="max-w-44 text-sm text-muted-foreground">
+                                                {item.sumber ?? '-'}
+                                            </TableCell>
+                                            <TableCell className="whitespace-nowrap text-sm">
+                                                {item.produksi_id ? (
+                                                    <Link
+                                                        href={produksiRoute.show.url(
+                                                            item.produksi_id,
+                                                        )}
+                                                        className="text-primary underline-offset-4 hover:underline"
+                                                    >
+                                                        Produksi #{item.produksi_id}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="text-muted-foreground">
+                                                        -
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {item.dicatat_oleh ?? '-'}
                                             </TableCell>
                                             <TableCell className="max-w-48 truncate text-sm text-muted-foreground">
                                                 {item.keterangan ?? '-'}

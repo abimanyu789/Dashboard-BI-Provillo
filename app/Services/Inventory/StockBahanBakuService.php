@@ -72,12 +72,15 @@ class StockBahanBakuService
     /**
      * Kurangi stok bahan baku.
      *
-     * Digunakan oleh: modul Produksi (potong stok saat produksi dimulai),
-     * dan rollback saat produksi dibatalkan.
+     * Digunakan oleh:
+     * - modul Produksi saat bahan dikeluarkan (issued/additional) — jenis: produksi
+     * - penyesuaian stok negatif manual — jenis: penyesuaian
+     *
+     * Catatan: memulai produksi hanya mencatat planned requirements; stok belum dikurangi.
      *
      * @param  BahanBaku  $bahanBaku  Model yang stoknya akan dikurangi.
      * @param  float  $qty  Jumlah yang dikurangi (harus > 0).
-     * @param  string  $jenis  Jenis transaksi: 'produksi' | 'rollback' | 'penyesuaian'.
+     * @param  string  $jenis  Jenis transaksi: 'produksi' | 'penyesuaian'.
      * @param  string|null  $keterangan  Catatan opsional.
      *
      * @throws \RuntimeException Jika stok tidak mencukupi (BR-01: stok tidak boleh negatif).

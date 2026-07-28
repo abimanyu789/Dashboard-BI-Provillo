@@ -49,7 +49,7 @@ class StokProdukJadiReport extends BaseReport
                 'tanggal'         => $s->created_at?->format('d/m/Y'),
                 'nama_produk'     => $s->produk?->nama_produk ?? '-',
                 'kode_produk'     => $s->produk?->kode_produk ?? '-',
-                'jenis_transaksi' => $s->jenis_transaksi,
+                'jenis_transaksi'  => DomainLabels::stokProdukTransaksi($s->jenis_transaksi),
                 'qty'             => (int) $s->qty,
                 'stok_sebelum'    => (int) $s->stok_sebelum,
                 'stok_sesudah'    => (int) $s->stok_sesudah,

@@ -277,7 +277,7 @@ export default function Dashboard({
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     {[
                         {
-                            label: 'Rework aktif',
+                            label: 'Perbaikan Ulang aktif',
                             value: `${operationalIndicators.activeRework} pcs`,
                             icon: RotateCcw,
                         },

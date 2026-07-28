@@ -2,6 +2,8 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { stokBahanTransaksiLabel } from '@/lib/domain-labels';
+import produksiRoute from '@/routes/produksi';
 import stokBahanBaku from '@/routes/stok-bahan-baku';
 import bahanBaku from '@/routes/bahan-baku';
 import type { JenisTransaksiStok, StokBahanBakuShowProps } from '@/types';
@@ -24,10 +26,10 @@ export default function StokBahanBakuShow({ transaksi }: StokBahanBakuShowProps)
 
     const jenisBadge = (jenis: JenisTransaksiStok) => {
         const map: Record<JenisTransaksiStok, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-            restock:    { label: 'Restock',    variant: 'default' },
-            produksi:   { label: 'Produksi',   variant: 'secondary' },
-            rollback:   { label: 'Rollback',   variant: 'outline' },
-            penyesuaian:{ label: 'Penyesuaian',variant: 'outline' },
+            restock:    { label: stokBahanTransaksiLabel('restock'), variant: 'default' },
+            produksi:   { label: stokBahanTransaksiLabel('produksi'), variant: 'secondary' },
+            rollback:   { label: stokBahanTransaksiLabel('rollback'), variant: 'outline' },
+            penyesuaian:{ label: stokBahanTransaksiLabel('penyesuaian'), variant: 'outline' },
         };
         const config = map[jenis] ?? { label: jenis, variant: 'outline' as const };
         return <Badge variant={config.variant}>{config.label}</Badge>;
@@ -120,7 +122,30 @@ export default function StokBahanBakuShow({ transaksi }: StokBahanBakuShowProps)
                             <div className="col-span-1 px-6 py-4">
                                 <p className="text-sm font-medium text-muted-foreground">Keterangan</p>
                                 <p className="mt-1 text-sm">
-                                    {transaksi.keterangan ?? (
+                                                                <div className="border-t px-6 py-4">
+                                <p className="text-sm font-medium text-muted-foreground">Sumber</p>
+                                <p className="mt-1 text-sm font-medium">{transaksi.sumber ?? '-'}</p>
+                            </div>
+                            <div className="border-t px-6 py-4">
+                                <p className="text-sm font-medium text-muted-foreground">No. Produksi</p>
+                                <p className="mt-1 text-sm">
+                                    {transaksi.produksi_id ? (
+                                        <Link
+                                            href={produksiRoute.show.url(transaksi.produksi_id)}
+                                            className="font-medium text-primary underline-offset-4 hover:underline"
+                                        >
+                                            Produksi #{transaksi.produksi_id}
+                                        </Link>
+                                    ) : (
+                                        '-'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="border-t px-6 py-4">
+                                <p className="text-sm font-medium text-muted-foreground">Dicatat Oleh</p>
+                                <p className="mt-1 text-sm">{transaksi.dicatat_oleh ?? '-'}</p>
+                            </div>
+{transaksi.keterangan ?? (
                                         <span className="text-muted-foreground">-</span>
                                     )}
                                 </p>

@@ -84,6 +84,17 @@ export default function ProduksiShow({
     const hasUnbalancedMaterial = materialSummary.some(
         (material) => material.returnable > 0,
     );
+    const hasMaterialShortage = materialSummary.some(
+        (material) => material.shortage > 0.00001,
+    );
+    const hasUnissuedPlan = materialSummary.some((material) => {
+        const remaining = Math.max(
+            0,
+            material.planned - (material.issued - material.returned),
+        );
+
+        return remaining > 0.00001;
+    });
     const isSelesaiEnabled =
         item.status === 'proses' &&
         item.qty_selesai >= item.qty_target &&
@@ -108,7 +119,7 @@ export default function ProduksiShow({
                         </Link>
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight">
-                                Detail Produksi
+                                Detail Produksi #{item.id}
                             </h1>
                             <div className="mt-1 flex items-center gap-2">
                                 <ProduksiStatusBadge status={item.status} />
@@ -125,6 +136,48 @@ export default function ProduksiShow({
                         stokCukup={stokCukup}
                     />
                 </div>
+
+                {item.status === 'proses' && (
+                    <div className="space-y-3">
+                        {hasMaterialShortage && (
+                            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                                Peringatan: masih ada kekurangan stok bahan
+                                terhadap rencana. Produksi dapat berjalan, tetapi
+                                keluarkan bahan hanya sampai stok gudang
+                                mencukupi.
+                            </div>
+                        )}
+                        {hasUnissuedPlan && (
+                            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+                                Produksi telah dimulai. Kebutuhan bahan sudah
+                                dihitung, tetapi stok belum dikurangi. Keluarkan
+                                bahan dari gudang untuk mencatat perubahan stok.
+                            </div>
+                        )}
+                        {hasUnbalancedMaterial && (
+                            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+                                Masih ada bahan yang sudah dikeluarkan tetapi
+                                belum ditandai terpakai atau dikembalikan.
+                                Selesaikan pergerakan bahan sebelum menutup
+                                produksi.
+                            </div>
+                        )}
+                        {activeRework.length > 0 && (
+                            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+                                Ada antrean Perbaikan Ulang aktif. Produksi belum
+                                dapat diselesaikan sampai rework selesai atau
+                                disposisi final ditetapkan.
+                            </div>
+                        )}
+                        {hasUnresolvedFailedQc && (
+                            <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+                                Ada hasil Tidak Lolos Pemeriksaan tanpa
+                                disposisi. Lengkapi disposisi sebelum menyelesaikan
+                                produksi.
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 <div className="grid gap-6 lg:grid-cols-3">
                     {/* ── Kolom Kiri ──────────────────────────────────── */}

@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import produk from '@/routes/produk';
+import { stokProdukTransaksiLabel } from '@/lib/domain-labels';
 import stokProdukJadi from '@/routes/stok-produk-jadi';
 import type { JenisTransaksiProduk, StokProdukJadiShowProps } from '@/types';
 
@@ -26,10 +27,22 @@ export default function StokProdukJadiShow({
                 variant: 'default' | 'secondary' | 'destructive' | 'outline';
             }
         > = {
-            produksi: { label: 'Produksi', variant: 'default' },
-            pengiriman: { label: 'Pengiriman', variant: 'secondary' },
-            rollback: { label: 'Rollback', variant: 'outline' },
-            penyesuaian: { label: 'Penyesuaian', variant: 'outline' },
+            produksi: {
+                label: stokProdukTransaksiLabel('produksi'),
+                variant: 'default',
+            },
+            pengiriman: {
+                label: stokProdukTransaksiLabel('pengiriman'),
+                variant: 'secondary',
+            },
+            rollback: {
+                label: stokProdukTransaksiLabel('rollback'),
+                variant: 'outline',
+            },
+            penyesuaian: {
+                label: stokProdukTransaksiLabel('penyesuaian'),
+                variant: 'outline',
+            },
         };
         const config = map[jenis] ?? {
             label: jenis,

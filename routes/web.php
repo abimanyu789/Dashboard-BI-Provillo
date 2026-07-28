@@ -99,6 +99,8 @@ Route::middleware(['auth'])->group(function () {
         ->name('produksi.progress');
     Route::post('produksi/{produksi}/material-movements', [ProduksiController::class, 'materialMovement'])
         ->name('produksi.material-movements.store');
+    Route::post('produksi/{produksi}/material-movements/bulk-issue', [ProduksiController::class, 'bulkMaterialIssue'])
+        ->name('produksi.material-movements.bulk-issue');
     Route::patch(
         'produksi/{produksi}/qc/{detailProduksi}/disposition',
         [ProduksiController::class, 'updateQcDisposition'],

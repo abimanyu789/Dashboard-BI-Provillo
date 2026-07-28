@@ -53,6 +53,120 @@ class ProduksiMaterialService
      *     idempotency_key: string
      * }  $data
      */
+    /**
+     * Pengeluaran bahan massal untuk rencana BOM yang masih tersisa.
+     *
+     * Hanya item dengan qty > 0 yang dicatat sebagai issued.
+     * Seluruh batch memakai 1 transaksi luar; gagal satu = rollback semua.
+     *
+     * @param  array{
+     *     tanggal: string,
+     *     keterangan?: string|null,
+     *     request_key: string,
+     *     items: list<array{
+     *         bahan_baku_id: int,
+     *         qty: float|int|string,
+     *         idempotency_key: string
+     *     }>
+     * }  $data
+     * @return list<ProduksiPemakaianBahan>
+     */
+    public function recordBulkIssue(Produksi $produksi, array $data, int $userId): array
+    {
+        return DB::transaction(function () use ($produksi, $data, $userId) {
+            $lockedProduksi = Produksi::query()->lockForUpdate()->findOrFail($produksi->id);
+
+            if (! $lockedProduksi->isProses()) {
+                throw new \RuntimeException(
+                    'Pengeluaran bahan massal hanya dapat dilakukan saat produksi berstatus Sedang Diproduksi.'
+                );
+            }
+
+            $items = collect($data['items'] ?? [])
+                ->map(fn (array $item): array => [
+                    'bahan_baku_id' => (int) $item['bahan_baku_id'],
+                    'qty' => (float) $item['qty'],
+                    'idempotency_key' => (string) $item['idempotency_key'],
+                ])
+                ->filter(fn (array $item): bool => $item['qty'] > self::STOCK_EPSILON)
+                ->values();
+
+            if ($items->isEmpty()) {
+                throw new \RuntimeException(
+                    'Tidak ada bahan dengan jumlah pengeluaran lebih dari nol.'
+                );
+            }
+
+            $bahanIds = $items->pluck('bahan_baku_id')->unique()->values()->all();
+
+            // Kunci semua bahan yang terdampak secara deterministik agar anti deadlock.
+            $lockedBahans = BahanBaku::query()
+                ->whereIn('id', $bahanIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($lockedBahans->count() !== count($bahanIds)) {
+                throw new \RuntimeException('Sebagian bahan baku tidak ditemukan.');
+            }
+
+            $summaryById = collect($this->materialSummary($lockedProduksi))
+                ->keyBy('id');
+
+            $movements = [];
+
+            foreach ($items as $item) {
+                $bahanId = $item['bahan_baku_id'];
+                $qty = $item['qty'];
+                $summary = $summaryById->get($bahanId);
+                $planned = (float) ($summary['planned'] ?? 0);
+                $netIssued = max(
+                    0.0,
+                    (float) ($summary['issued'] ?? 0) - (float) ($summary['returned'] ?? 0),
+                );
+                $remainingPlanned = max(0.0, $planned - $netIssued);
+                $available = (float) $lockedBahans->get($bahanId)?->getAttribute('stok');
+
+                if ($qty - $available > self::STOCK_EPSILON) {
+                    $nama = (string) $lockedBahans->get($bahanId)?->getAttribute('nama_bahan');
+
+                    throw new \RuntimeException(
+                        "Stok {$nama} tidak mencukupi untuk pengeluaran massal. "
+                        ."Tersedia: {$available}, diminta: {$qty}."
+                    );
+                }
+
+                // Saran default: min(sisa rencana, stok). User boleh isi di bawah sisa rencana,
+                // tetapi tidak boleh melebihi sisa rencana pada jalur bulk issue (bukan additional).
+                if ($planned > self::STOCK_EPSILON && $qty - $remainingPlanned > self::STOCK_EPSILON) {
+                    $nama = (string) $lockedBahans->get($bahanId)?->getAttribute('nama_bahan');
+
+                    throw new \RuntimeException(
+                        "Jumlah pengeluaran {$nama} melebihi sisa rencana. "
+                        ."Maksimum: {$remainingPlanned}. Gunakan form manual untuk bahan tambahan."
+                    );
+                }
+
+                $keterangan = filled($data['keterangan'] ?? null)
+                    ? (string) $data['keterangan']
+                    : 'Pengeluaran bahan massal untuk produksi #'.$lockedProduksi->id;
+
+                $movements[] = $this->recordMovement($lockedProduksi, [
+                    'bahan_baku_id' => $bahanId,
+                    'movement_type' => 'issued',
+                    'qty' => $qty,
+                    'tanggal' => $data['tanggal'],
+                    'keterangan' => $keterangan,
+                    // Prefix deterministik agar request massal dapat diulang aman per batch.
+                    'idempotency_key' => $item['idempotency_key'],
+                ], $userId);
+            }
+
+            return $movements;
+        }, attempts: 3);
+    }
+
     public function recordMovement(Produksi $produksi, array $data, int $userId): ProduksiPemakaianBahan
     {
         return DB::transaction(function () use ($produksi, $data, $userId) {
@@ -87,8 +201,12 @@ class ProduksiMaterialService
                 $returnable = $this->returnableQuantity($lockedProduksi->id, $bahanBaku->id);
 
                 if ($qty - $returnable > self::STOCK_EPSILON) {
+                    $label = $movementType === 'consumed'
+                        ? 'Bahan Terpakai'
+                        : 'Bahan Dikembalikan';
+
                     throw new \RuntimeException(
-                        "Jumlah {$movementType} melebihi bahan terbit yang belum digunakan. "
+                        "Jumlah {$label} melebihi bahan yang masih dapat diproses. "
                         ."Maksimum: {$returnable}."
                     );
                 }

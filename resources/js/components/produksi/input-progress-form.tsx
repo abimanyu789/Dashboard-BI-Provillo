@@ -12,6 +12,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { qcDispositionLabel, qcStatusLabel } from '@/lib/domain-labels';
 import produksi from '@/routes/produksi';
 import type {
     ActiveRework,
@@ -65,7 +66,7 @@ export function InputProgressForm({
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-                <Label>Hasil rework (opsional)</Label>
+                <Label>Hasil perbaikan ulang (opsional)</Label>
                 <SearchableCombobox
                     items={activeRework.map((rework) => ({
                         value: rework.id,
@@ -83,7 +84,7 @@ export function InputProgressForm({
                             qty: '',
                         }));
                     }}
-                    placeholder="Progress baru / pilih rework..."
+                    placeholder="Progress baru / pilih perbaikan ulang..."
                 />
             </div>
 
@@ -148,7 +149,7 @@ export function InputProgressForm({
                 <div className="rounded-lg bg-muted/50 px-4 py-2.5 text-sm">
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                            {selectedRework ? 'Sisa rework' : 'Sisa target'}
+                            {selectedRework ? 'Sisa perbaikan ulang' : 'Sisa target'}
                         </span>
                         <span className="font-medium text-primary">
                             {selectedRework?.qty_aktif ?? selectedProduk?.sisa}{' '}
@@ -204,7 +205,7 @@ export function InputProgressForm({
                                 : 'border-muted-foreground/30 text-muted-foreground hover:bg-muted/50'
                         }`}
                     >
-                        <CheckCircle className="size-4" /> Lolos QC
+                        <CheckCircle className="size-4" /> Lolos Pemeriksaan
                     </button>
                     <button
                         type="button"
@@ -215,7 +216,7 @@ export function InputProgressForm({
                                 : 'border-muted-foreground/30 text-muted-foreground hover:bg-muted/50'
                         }`}
                     >
-                        <XCircle className="size-4" /> Tidak Lolos
+                        <XCircle className="size-4" /> Tidak Lolos Pemeriksaan
                     </button>
                 </div>
             </div>
@@ -253,13 +254,9 @@ export function InputProgressForm({
                                 <SelectValue placeholder="Pilih disposisi..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="rework">Rework</SelectItem>
-                                <SelectItem value="jual_cacat">
-                                    Jual cacat
-                                </SelectItem>
-                                <SelectItem value="dimusnahkan">
-                                    Dimusnahkan
-                                </SelectItem>
+                                <SelectItem value="rework">{qcDispositionLabel('rework')}</SelectItem>
+                                <SelectItem value="jual_cacat">{qcDispositionLabel('jual_cacat')}</SelectItem>
+                                <SelectItem value="dimusnahkan">{qcDispositionLabel('dimusnahkan')}</SelectItem>
                             </SelectContent>
                         </Select>
                         {errors.disposisi_qc && (

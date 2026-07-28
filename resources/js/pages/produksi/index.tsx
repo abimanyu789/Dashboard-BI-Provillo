@@ -262,8 +262,10 @@ export default function ProduksiIndex({
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="semua">Semua Status</SelectItem>
-                            <SelectItem value="draft">Draft</SelectItem>
-                            <SelectItem value="proses">Proses</SelectItem>
+                            <SelectItem value="draft">Belum Dimulai</SelectItem>
+                            <SelectItem value="proses">
+                                Sedang Diproduksi
+                            </SelectItem>
                             <SelectItem value="selesai">Selesai</SelectItem>
                             <SelectItem value="dibatalkan">
                                 Dibatalkan

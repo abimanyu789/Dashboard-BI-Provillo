@@ -13,6 +13,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { stokProdukTransaksiLabel } from '@/lib/domain-labels';
 import stokProdukJadi from '@/routes/stok-produk-jadi';
 import pesananRoutes from '@/routes/pesanan';
 import type {
@@ -220,18 +221,8 @@ export default function StokProdukJadiCreate({
                                     <SelectValue placeholder="Pilih jenis..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="pengiriman">
-                                        <span className="flex items-center gap-2">
-                                            <TrendingDown className="size-4 text-red-500" />
-                                            Pengiriman
-                                        </span>
-                                    </SelectItem>
-                                    <SelectItem value="penyesuaian">
-                                        <span className="flex items-center gap-2">
-                                            <TrendingUp className="size-4 text-amber-500" />
-                                            Penyesuaian
-                                        </span>
-                                    </SelectItem>
+                                    <SelectItem value="pengiriman">Pengiriman Produk</SelectItem>
+                                    <SelectItem value="penyesuaian">Penyesuaian Stok</SelectItem>
                                 </SelectContent>
                             </Select>
                             {errors.jenis_transaksi && (

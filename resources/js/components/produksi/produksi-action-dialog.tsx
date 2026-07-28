@@ -69,9 +69,9 @@ export function ProduksiActionDialog({
                         <DialogHeader>
                             <DialogTitle>Mulai Produksi</DialogTitle>
                             <DialogDescription>
-                                Kebutuhan BOM akan dicatat sebagai rencana. Stok
-                                bahan baku belum berkurang sampai bahan
-                                diterbitkan untuk produksi.
+                                Kebutuhan BOM akan dicatat sebagai Rencana
+                                Kebutuhan. Stok bahan baku belum berkurang
+                                sampai bahan dikeluarkan untuk produksi.
                                 {!stokCukup && (
                                     <>
                                         <br />
@@ -129,10 +129,10 @@ export function ProduksiActionDialog({
                                 {isProses ? (
                                     <>
                                         Produksi sedang berjalan. Hanya bahan
-                                        yang sudah diterbitkan tetapi belum
-                                        digunakan dan belum dikembalikan yang
+                                        yang sudah dikeluarkan tetapi belum
+                                        terpakai dan belum dikembalikan yang
                                         akan masuk kembali ke gudang. Bahan yang
-                                        sudah digunakan tidak dikembalikan.
+                                        sudah terpakai tidak dikembalikan.
                                         <br />
                                         <br />
                                         Tindakan ini tidak dapat dibatalkan.

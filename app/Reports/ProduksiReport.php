@@ -3,6 +3,7 @@
 namespace App\Reports;
 
 use App\Models\Produksi;
+use App\Support\DomainLabels;
 use Illuminate\Support\Collection;
 
 class ProduksiReport extends BaseReport
@@ -52,8 +53,8 @@ class ProduksiReport extends BaseReport
                 'deadline'       => $p->deadline?->format('d/m/Y'),
                 'qty_target'     => $p->qty_target,
                 'qty_selesai'    => $p->qty_selesai,
-                'status'         => $p->status,
-                'status_qc'      => $p->status_qc ?? '-',
+                'status'         => DomainLabels::produksiStatus($p->status),
+                'status_qc'      => $p->status_qc ? DomainLabels::qcStatus($p->status_qc) : '-',
             ]);
     }
 
@@ -74,8 +75,8 @@ class ProduksiReport extends BaseReport
         return [
             ['label' => 'Total Produksi',  'value' => $total,      'color' => 'blue'],
             ['label' => 'Selesai',         'value' => $selesai,    'color' => 'emerald'],
-            ['label' => 'Sedang Proses',   'value' => $proses,     'color' => 'indigo'],
-            ['label' => 'Draft',           'value' => $draft,      'color' => 'gray'],
+            ['label' => 'Sedang Diproduksi', 'value' => $proses,     'color' => 'indigo'],
+            ['label' => 'Belum Dimulai',   'value' => $draft,      'color' => 'gray'],
             ['label' => 'Total Unit Jadi', 'value' => $totalUnit.' unit', 'color' => 'purple'],
         ];
     }

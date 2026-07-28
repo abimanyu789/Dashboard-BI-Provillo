@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\TransaksiProdukRequest;
 use App\Models\Pesanan;
 use App\Models\Produk;
+use App\Models\StokProdukCacat;
 use App\Models\StokProdukJadi;
 use App\Services\Inventory\StockProdukService;
 use App\Services\PesananService;
+use App\Support\DomainLabels;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -20,17 +22,27 @@ class StokProdukJadiController extends Controller
     ) {}
 
     /**
-     * Daftar riwayat seluruh transaksi stok produk jadi.
+     * Daftar stok produk jadi + tab produk cacat / dimusnahkan.
+     *
+     * Tab:
+     * - normal: riwayat stok produk normal (hanya qty lolos QC yang masuk stok normal)
+     * - cacat: stok_produk_cacat disposisi jual_cacat (tidak digabung ke stok normal)
+     * - dimusnahkan: riwayat disposisi dimusnahkan
      */
     public function index(Request $request)
     {
-        $search         = $request->input('search');
-        $produkId       = $request->input('produk_id');
+        $tab = $request->input('tab', 'normal');
+        if (! in_array($tab, ['normal', 'cacat', 'dimusnahkan'], true)) {
+            $tab = 'normal';
+        }
+
+        $search = $request->input('search');
+        $produkId = $request->input('produk_id');
         $jenisTransaksi = $request->input('jenis_transaksi');
-        $tanggalDari    = $request->input('tanggal_dari');
-        $tanggalSampai  = $request->input('tanggal_sampai');
-        $sortBy         = $request->input('sort_by', 'created_at');
-        $sortDir        = $request->input('sort_dir', 'desc');
+        $tanggalDari = $request->input('tanggal_dari');
+        $tanggalSampai = $request->input('tanggal_sampai');
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
 
         $allowedSorts = ['created_at', 'qty', 'stok_sebelum', 'stok_sesudah', 'jenis_transaksi'];
         if (! in_array($sortBy, $allowedSorts)) {
@@ -38,52 +50,168 @@ class StokProdukJadiController extends Controller
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
 
-        $riwayat = StokProdukJadi::with(['produk', 'pesanan.customer'])
-            ->when($search, function ($query, $search) {
-                $query->where(function ($q) use ($search) {
-                    $q->whereHas('produk', function ($q2) use ($search) {
-                        $q2->where(function ($q3) use ($search) {
-                            $q3->where('kode_produk', 'like', "%{$search}%")
-                              ->orWhere('nama_produk', 'like', "%{$search}%");
-                        });
-                    })->orWhere('keterangan', 'like', "%{$search}%")
-                      ->orWhereHas('pesanan', function ($q2) use ($search) {
-                          $q2->where('nomor_pesanan', 'like', "%{$search}%");
-                      });
-                });
-            })
-            ->when($produkId, function ($query, $id) {
-                $query->where('produk_id', $id);
-            })
-            ->when($jenisTransaksi, function ($query, $jenis) {
-                $query->where('jenis_transaksi', $jenis);
-            })
-            ->when($tanggalDari, function ($query, $dari) {
-                $query->whereDate('created_at', '>=', $dari);
-            })
-            ->when($tanggalSampai, function ($query, $sampai) {
-                $query->whereDate('created_at', '<=', $sampai);
-            })
-            ->orderBy($sortBy, $sortDir)
-            ->paginate(15)
-            ->withQueryString();
-
         $produkOptions = Produk::orderBy('nama_produk')
-            ->get(['id', 'kode_produk', 'nama_produk', 'stok']);
+            ->get(['id', 'kode_produk', 'nama_produk']);
 
-        return Inertia::render('stok-produk-jadi/index', [
-            'riwayat'       => $riwayat,
+        $payload = [
+            'tab' => $tab,
+            'riwayat' => null,
+            'produkCacat' => null,
+            'riwayatDimusnahkan' => null,
             'produkOptions' => $produkOptions,
-            'filters'       => [
-                'search'          => $search,
-                'produk_id'       => $produkId,
+            'filters' => [
+                'tab' => $tab,
+                'search' => $search,
+                'produk_id' => $produkId,
                 'jenis_transaksi' => $jenisTransaksi,
-                'tanggal_dari'    => $tanggalDari,
-                'tanggal_sampai'  => $tanggalSampai,
-                'sort_by'         => $sortBy,
-                'sort_dir'        => $sortDir,
+                'tanggal_dari' => $tanggalDari,
+                'tanggal_sampai' => $tanggalSampai,
+                'sort_by' => $sortBy,
+                'sort_dir' => $sortDir,
             ],
-        ]);
+            // Keputusan belum final: alur penjualan/pengeluaran produk cacat layak jual.
+            'unresolvedNotes' => [
+                'Penanganan penjualan/pengeluaran stok produk cacat layak jual belum disediakan di modul ini. Untuk cakupan saat ini, qty cacat dihitung dari catatan stok_produk_cacat (disposisi jual_cacat) dan tidak digabung ke stok normal.',
+            ],
+        ];
+
+        if ($tab === 'normal') {
+            $riwayat = StokProdukJadi::with(['produk', 'pesanan.customer', 'createdBy'])
+                ->when($search, function ($query, $search) {
+                    $query->where(function ($q) use ($search) {
+                        $q->whereHas('produk', function ($q2) use ($search) {
+                            $q2->where(function ($q3) use ($search) {
+                                $q3->where('kode_produk', 'like', "%{$search}%")
+                                    ->orWhere('nama_produk', 'like', "%{$search}%");
+                            });
+                        })->orWhere('keterangan', 'like', "%{$search}%")
+                            ->orWhereHas('pesanan', function ($q2) use ($search) {
+                                $q2->where('nomor_pesanan', 'like', "%{$search}%");
+                            });
+                    });
+                })
+                ->when($produkId, function ($query, $id) {
+                    $query->where('produk_id', $id);
+                })
+                ->when($jenisTransaksi, function ($query, $jenis) {
+                    $query->where('jenis_transaksi', $jenis);
+                })
+                ->when($tanggalDari, function ($query, $tanggal) {
+                    $query->whereDate('created_at', '>=', $tanggal);
+                })
+                ->when($tanggalSampai, function ($query, $tanggal) {
+                    $query->whereDate('created_at', '<=', $tanggal);
+                })
+                ->orderBy($sortBy, $sortDir)
+                ->paginate(15)
+                ->withQueryString()
+                ->through(fn (StokProdukJadi $item) => [
+                    ...$item->toArray(),
+                    'jenis_transaksi_label' => DomainLabels::stokProdukTransaksi($item->jenis_transaksi),
+                    'dicatat_oleh' => $item->createdBy?->name,
+                ]);
+
+            $payload['riwayat'] = $riwayat;
+        }
+
+        if ($tab === 'cacat') {
+            // Agregasi stok cacat layak jual per produk + baris detail.
+            $rows = StokProdukCacat::query()
+                ->with([
+                    'produk',
+                    'produksi',
+                    'createdBy',
+                    'detailProduksi.karyawan',
+                    'detailProduksi.inspector',
+                ])
+                ->where('disposisi', 'jual_cacat')
+                ->when($search, function ($query, $search) {
+                    $query->where(function ($q) use ($search) {
+                        $q->where('alasan_qc', 'like', "%{$search}%")
+                            ->orWhere('catatan', 'like', "%{$search}%")
+                            ->orWhereHas('produk', function ($q2) use ($search) {
+                                $q2->where('kode_produk', 'like', "%{$search}%")
+                                    ->orWhere('nama_produk', 'like', "%{$search}%");
+                            });
+                    });
+                })
+                ->when($produkId, fn ($q, $id) => $q->where('produk_id', $id))
+                ->when($tanggalDari, fn ($q, $t) => $q->whereDate('created_at', '>=', $t))
+                ->when($tanggalSampai, fn ($q, $t) => $q->whereDate('created_at', '<=', $t))
+                ->orderByDesc('created_at')
+                ->paginate(15)
+                ->withQueryString()
+                ->through(function (StokProdukCacat $row) {
+                    return [
+                        'id' => $row->id,
+                        'produk_id' => $row->produk_id,
+                        'kode_produk' => $row->produk?->kode_produk,
+                        'nama_produk' => $row->produk?->nama_produk,
+                        'qty' => (int) $row->qty,
+                        'alasan_qc' => $row->alasan_qc,
+                        'catatan' => $row->catatan,
+                        'produksi_id' => $row->produksi_id,
+                        'karyawan' => $row->detailProduksi?->karyawan?->nama_karyawan,
+                        'inspected_at' => $row->detailProduksi?->inspected_at
+                            ?? $row->detailProduksi?->created_at,
+                        'created_at' => $row->created_at,
+                        'dicatat_oleh' => $row->createdBy?->name,
+                        'disposisi' => $row->disposisi,
+                        'disposisi_label' => DomainLabels::qcDisposition($row->disposisi),
+                    ];
+                });
+
+            $payload['produkCacat'] = $rows;
+        }
+
+        if ($tab === 'dimusnahkan') {
+            $rows = StokProdukCacat::query()
+                ->with([
+                    'produk',
+                    'produksi',
+                    'createdBy',
+                    'detailProduksi',
+                ])
+                ->where('disposisi', 'dimusnahkan')
+                ->when($search, function ($query, $search) {
+                    $query->where(function ($q) use ($search) {
+                        $q->where('alasan_qc', 'like', "%{$search}%")
+                            ->orWhere('catatan', 'like', "%{$search}%")
+                            ->orWhereHas('produk', function ($q2) use ($search) {
+                                $q2->where('kode_produk', 'like', "%{$search}%")
+                                    ->orWhere('nama_produk', 'like', "%{$search}%");
+                            });
+                    });
+                })
+                ->when($produkId, fn ($q, $id) => $q->where('produk_id', $id))
+                ->when($tanggalDari, fn ($q, $t) => $q->whereDate('created_at', '>=', $t))
+                ->when($tanggalSampai, fn ($q, $t) => $q->whereDate('created_at', '<=', $t))
+                ->orderByDesc('created_at')
+                ->paginate(15)
+                ->withQueryString()
+                ->through(function (StokProdukCacat $row) {
+                    return [
+                        'id' => $row->id,
+                        'produk_id' => $row->produk_id,
+                        'kode_produk' => $row->produk?->kode_produk,
+                        'nama_produk' => $row->produk?->nama_produk,
+                        'qty' => (int) $row->qty,
+                        'alasan_qc' => $row->alasan_qc,
+                        'catatan' => $row->catatan,
+                        'produksi_id' => $row->produksi_id,
+                        'inspected_at' => $row->detailProduksi?->inspected_at
+                            ?? $row->detailProduksi?->created_at,
+                        'created_at' => $row->created_at,
+                        'dicatat_oleh' => $row->createdBy?->name,
+                        'disposisi' => $row->disposisi,
+                        'disposisi_label' => DomainLabels::qcDisposition($row->disposisi),
+                    ];
+                });
+
+            $payload['riwayatDimusnahkan'] = $rows;
+        }
+
+        return Inertia::render('stok-produk-jadi/index', $payload);
     }
 
     /**
@@ -210,7 +338,7 @@ class StokProdukJadiController extends Controller
             return back()->withInput()->with('error', $e->getMessage());
         }
 
-        $label     = $jenis === 'pengiriman' ? 'Pengiriman' : 'Penyesuaian stok';
+        $label = DomainLabels::stokProdukTransaksi($jenis);
         $itemCount = count($items);
         $suffix    = $itemCount > 1 ? " ({$itemCount} item)" : '';
 
@@ -224,10 +352,16 @@ class StokProdukJadiController extends Controller
      */
     public function show(StokProdukJadi $stokProdukJadi)
     {
-        $stokProdukJadi->load(['produk', 'pesanan.customer']);
+        $stokProdukJadi->load(['produk', 'pesanan.customer', 'createdBy']);
 
         return Inertia::render('stok-produk-jadi/show', [
-            'transaksi' => $stokProdukJadi,
+            'transaksi' => [
+                ...$stokProdukJadi->toArray(),
+                'jenis_transaksi_label' => \App\Support\DomainLabels::stokProdukTransaksi(
+                    $stokProdukJadi->jenis_transaksi,
+                ),
+                'dicatat_oleh' => $stokProdukJadi->createdBy?->name,
+            ],
         ]);
     }
 }
