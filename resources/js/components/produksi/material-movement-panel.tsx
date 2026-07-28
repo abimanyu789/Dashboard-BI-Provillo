@@ -40,6 +40,7 @@ import {
     materialAvailabilityLabel,
     materialMovementLabel,
 } from '@/lib/domain-labels';
+import { createIdempotencyKey } from '@/lib/utils';
 import produksiRoute from '@/routes/produksi';
 import type {
     MaterialMovementFormData,
@@ -67,7 +68,10 @@ function suggestedIssueQty(material: MaterialSummary): number {
 }
 
 function remainingPlannedQty(material: MaterialSummary): number {
-    return Math.max(0, material.planned - (material.issued - material.returned));
+    return Math.max(
+        0,
+        material.planned - (material.issued - material.returned),
+    );
 }
 
 export function MaterialMovementPanel({
@@ -75,14 +79,15 @@ export function MaterialMovementPanel({
     materialSummary,
     materialOptions,
 }: MaterialMovementPanelProps) {
-    const { data, setData, post, processing, errors, reset } =
+    const { data, setData, post, processing, errors, reset, transform } =
         useForm<MaterialMovementFormData>({
             bahan_baku_id: '',
             movement_type: 'issued',
             qty: '',
             tanggal: new Date().toISOString().slice(0, 10),
             keterangan: '',
-            idempotency_key: crypto.randomUUID(),
+            // Generated right before submit / after success (SSR-safe).
+            idempotency_key: '',
         });
 
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -96,27 +101,19 @@ export function MaterialMovementPanel({
         new Date().toISOString().slice(0, 10),
     );
     const [bulkKeterangan, setBulkKeterangan] = useState('');
-    const [bulkRequestKey, setBulkRequestKey] = useState(crypto.randomUUID());
+    // Keys are created when the bulk dialog opens or just before request.
+    const [bulkRequestKey, setBulkRequestKey] = useState('');
     const [bulkQtys, setBulkQtys] = useState<BulkQtyMap>(() => {
         const initial: BulkQtyMap = {};
         materialSummary.forEach((material) => {
             initial[material.id] = suggestedIssueQty(material).toFixed(2);
         });
 
-
         return initial;
     });
     const [itemIdempotency, setItemIdempotency] = useState<
         Record<number, string>
-    >(() => {
-        const initial: Record<number, string> = {};
-        materialSummary.forEach((material) => {
-            initial[material.id] = crypto.randomUUID();
-        });
-
-
-        return initial;
-    });
+    >({});
 
     const selectedMaterial = materialSummary.find(
         (material) => material.id === Number(data.bahan_baku_id),
@@ -158,35 +155,47 @@ export function MaterialMovementPanel({
         const nextKeys: Record<number, string> = {};
         materialSummary.forEach((material) => {
             nextQtys[material.id] = suggestedIssueQty(material).toFixed(2);
-            nextKeys[material.id] = crypto.randomUUID();
+            nextKeys[material.id] = createIdempotencyKey();
         });
         setBulkQtys(nextQtys);
         setItemIdempotency(nextKeys);
-        setBulkRequestKey(crypto.randomUUID());
+        setBulkRequestKey(createIdempotencyKey());
         setBulkTanggal(new Date().toISOString().slice(0, 10));
         setBulkKeterangan('');
         setBulkOpen(true);
     };
 
     const confirmBulkIssue = () => {
-        const items = bulkItemsPreview.map(({ material, qty }) => ({
-            bahan_baku_id: material.id,
-            qty,
-            idempotency_key:
-                itemIdempotency[material.id] ?? crypto.randomUUID(),
-        }));
+        const requestKey = bulkRequestKey || createIdempotencyKey();
+
+        if (!bulkRequestKey) {
+            setBulkRequestKey(requestKey);
+        }
+
+        const nextItemKeys = { ...itemIdempotency };
+        const items = bulkItemsPreview.map(({ material, qty }) => {
+            const key = nextItemKeys[material.id] ?? createIdempotencyKey();
+            nextItemKeys[material.id] = key;
+
+            return {
+                bahan_baku_id: material.id,
+                qty,
+                idempotency_key: key,
+            };
+        });
 
         if (items.length === 0) {
             return;
         }
 
+        setItemIdempotency(nextItemKeys);
         setBulkProcessing(true);
         router.post(
             produksiRoute.materialMovements.bulkIssue.url(item.id),
             {
                 tanggal: bulkTanggal,
                 keterangan: bulkKeterangan || null,
-                request_key: bulkRequestKey,
+                request_key: requestKey,
                 items,
             },
             {
@@ -195,7 +204,7 @@ export function MaterialMovementPanel({
                     setBulkProcessing(false);
                     setBulkConfirmOpen(false);
                     setBulkOpen(false);
-                    setBulkRequestKey(crypto.randomUUID());
+                    setBulkRequestKey(createIdempotencyKey());
                 },
             },
         );
@@ -217,7 +226,7 @@ export function MaterialMovementPanel({
                 qty,
                 tanggal: new Date().toISOString().slice(0, 10),
                 keterangan: `Pengeluaran sisa kebutuhan rencana untuk ${material.nama_bahan}`,
-                idempotency_key: crypto.randomUUID(),
+                idempotency_key: createIdempotencyKey(),
             },
             {
                 preserveScroll: true,
@@ -234,26 +243,43 @@ export function MaterialMovementPanel({
         }
 
         if (data.movement_type === 'returned') {
+            // Key is prepared before the confirm dialog so retry uses the same value.
+            if (!data.idempotency_key) {
+                setData('idempotency_key', createIdempotencyKey());
+            }
+
             setReturnConfirmOpen(true);
 
             return;
         }
 
+        const key = data.idempotency_key || createIdempotencyKey();
+        transform((formData) => ({
+            ...formData,
+            idempotency_key: key,
+        }));
+
         post(produksiRoute.materialMovements.store.url(item.id), {
             preserveScroll: true,
             onSuccess: () => {
                 reset('qty', 'keterangan');
-                setData('idempotency_key', crypto.randomUUID());
+                setData('idempotency_key', createIdempotencyKey());
             },
         });
     };
 
     const confirmReturn = () => {
+        const key = data.idempotency_key || createIdempotencyKey();
+        transform((formData) => ({
+            ...formData,
+            idempotency_key: key,
+        }));
+
         post(produksiRoute.materialMovements.store.url(item.id), {
             preserveScroll: true,
             onSuccess: () => {
                 reset('qty', 'keterangan');
-                setData('idempotency_key', crypto.randomUUID());
+                setData('idempotency_key', createIdempotencyKey());
                 setReturnConfirmOpen(false);
             },
             onError: () => setReturnConfirmOpen(false),
@@ -363,7 +389,9 @@ export function MaterialMovementPanel({
                             {materialSummary.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={item.status === 'proses' ? 9 : 8}
+                                        colSpan={
+                                            item.status === 'proses' ? 9 : 8
+                                        }
                                         className="py-8 text-center text-muted-foreground"
                                     >
                                         Belum ada data material.
@@ -674,8 +702,8 @@ export function MaterialMovementPanel({
                                         {movement.movement_type ===
                                             'planned' && (
                                             <p className="mt-1 text-xs text-muted-foreground">
-                                                Rencana kebutuhan tidak
-                                                mengubah stok.
+                                                Rencana kebutuhan tidak mengubah
+                                                stok.
                                             </p>
                                         )}
                                         {movement.movement_type ===
@@ -842,8 +870,7 @@ export function MaterialMovementPanel({
                                                             (current) => ({
                                                                 ...current,
                                                                 [material.id]:
-                                                                    event
-                                                                        .target
+                                                                    event.target
                                                                         .value,
                                                             }),
                                                         )
@@ -874,18 +901,20 @@ export function MaterialMovementPanel({
                                 disabled={
                                     bulkItemsPreview.length === 0 ||
                                     bulkProcessing ||
-                                    bulkItemsPreview.some(({ material, qty }) => {
-                                        const remaining =
-                                            remainingPlannedQty(material);
+                                    bulkItemsPreview.some(
+                                        ({ material, qty }) => {
+                                            const remaining =
+                                                remainingPlannedQty(material);
 
-                                        return (
-                                            qty < 0 ||
-                                            qty - material.available >
-                                                0.00001 ||
-                                            (material.planned > 0 &&
-                                                qty - remaining > 0.00001)
-                                        );
-                                    })
+                                            return (
+                                                qty < 0 ||
+                                                qty - material.available >
+                                                    0.00001 ||
+                                                (material.planned > 0 &&
+                                                    qty - remaining > 0.00001)
+                                            );
+                                        },
+                                    )
                                 }
                                 onClick={() => setBulkConfirmOpen(true)}
                             >
@@ -913,7 +942,8 @@ export function MaterialMovementPanel({
                                 className="flex justify-between gap-3"
                             >
                                 <span>
-                                    {material.kode_bahan} — {material.nama_bahan}
+                                    {material.kode_bahan} —{' '}
+                                    {material.nama_bahan}
                                 </span>
                                 <span className="font-mono">
                                     {qty.toFixed(2)}
@@ -932,7 +962,7 @@ export function MaterialMovementPanel({
                         </Button>
                         <Button
                             type="button"
-                            onClick={submitBulkIssue}
+                            onClick={confirmBulkIssue}
                             disabled={bulkProcessing}
                         >
                             {bulkProcessing
@@ -943,7 +973,10 @@ export function MaterialMovementPanel({
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={returnConfirmOpen} onOpenChange={setReturnConfirmOpen}>
+            <Dialog
+                open={returnConfirmOpen}
+                onOpenChange={setReturnConfirmOpen}
+            >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Konfirmasi Pengembalian Bahan</DialogTitle>
