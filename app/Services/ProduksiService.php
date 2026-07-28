@@ -402,6 +402,9 @@ class ProduksiService
      *
      * BR-17: qty lolos == qty_target sebelum bisa selesai.
      *
+     * Semua blocker dikumpulkan dulu agar pesan error menampilkan checklist
+     * lengkap (bukan hanya alasan pertama), mengurangi bolak-balik perbaiki-satu-per-satu.
+     *
      * @throws \RuntimeException
      */
     public function selesaikanProduksi(Produksi $produksi): Produksi
@@ -415,40 +418,63 @@ class ProduksiService
             $this->recalculateProgress($lockedProduksi);
             $lockedProduksi->refresh();
 
-            if ($lockedProduksi->qty_selesai < $lockedProduksi->qty_target) {
+            $blockers = $this->completionBlockers($lockedProduksi);
+
+            if ($blockers !== []) {
                 throw new \RuntimeException(
-                    'Produksi belum dapat diselesaikan. Progress saat ini: '
-                    ."{$lockedProduksi->qty_selesai} / {$lockedProduksi->qty_target} pcs."
+                    "Produksi belum dapat diselesaikan. Selesaikan dulu:\n- "
+                    .implode("\n- ", $blockers)
                 );
-            }
-
-            $failedWithoutDisposition = DetailProduksi::query()
-                ->where('produksi_id', $lockedProduksi->id)
-                ->where('qc_status', 'tidak_lolos')
-                ->whereNull('disposisi_qc')
-                ->exists();
-
-            if ($failedWithoutDisposition) {
-                throw new \RuntimeException('Produksi belum dapat diselesaikan karena ada kegagalan QC tanpa disposisi.');
-            }
-
-            if ($this->activeReworkQuantity($lockedProduksi) > 0) {
-                throw new \RuntimeException('Produksi belum dapat diselesaikan karena masih ada rework aktif.');
-            }
-
-            $this->materialService->assertConsistent($lockedProduksi);
-
-            $negativeStockExists = BahanBaku::query()->where('stok', '<', 0)->exists()
-                || Produk::query()->where('stok', '<', 0)->exists();
-
-            if ($negativeStockExists) {
-                throw new \RuntimeException('Produksi belum dapat diselesaikan karena ditemukan kondisi stok tidak valid.');
             }
 
             $lockedProduksi->update(['status' => 'selesai']);
 
             return $lockedProduksi->fresh();
         }, attempts: 3);
+    }
+
+    /**
+     * Daftar alasan (Bahasa Indonesia) yang masih menghalangi penyelesaian produksi.
+     *
+     * @return list<string>
+     */
+    public function completionBlockers(Produksi $produksi): array
+    {
+        $blockers = [];
+
+        if ($produksi->qty_selesai < $produksi->qty_target) {
+            $blockers[] = 'Jumlah lolos QC belum mencapai target ('
+                ."{$produksi->qty_selesai} / {$produksi->qty_target} pcs).";
+        }
+
+        $failedWithoutDisposition = DetailProduksi::query()
+            ->where('produksi_id', $produksi->id)
+            ->where('qc_status', 'tidak_lolos')
+            ->whereNull('disposisi_qc')
+            ->exists();
+
+        if ($failedWithoutDisposition) {
+            $blockers[] = 'Masih ada hasil Tidak Lolos Pemeriksaan tanpa disposisi.';
+        }
+
+        if ($this->activeReworkQuantity($produksi) > 0) {
+            $blockers[] = 'Masih ada antrean Perbaikan Ulang (rework) aktif.';
+        }
+
+        try {
+            $this->materialService->assertConsistent($produksi);
+        } catch (\RuntimeException $e) {
+            $blockers[] = $e->getMessage();
+        }
+
+        $negativeStockExists = BahanBaku::query()->where('stok', '<', 0)->exists()
+            || Produk::query()->where('stok', '<', 0)->exists();
+
+        if ($negativeStockExists) {
+            $blockers[] = 'Ditemukan stok negatif (bahan baku atau produk jadi). Perbaiki stok terlebih dahulu.';
+        }
+
+        return $blockers;
     }
 
     // ─── Kalkulasi ───────────────────────────────────────────────────────────

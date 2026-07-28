@@ -12,7 +12,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { qcDispositionLabel, qcStatusLabel } from '@/lib/domain-labels';
+import { qcDispositionLabel } from '@/lib/domain-labels';
+import { createIdempotencyKey } from '@/lib/utils';
 import produksi from '@/routes/produksi';
 import type {
     ActiveRework,
@@ -32,7 +33,7 @@ export function InputProgressForm({
     produkBelumSelesai,
     activeRework,
 }: InputProgressFormProps) {
-    const { data, setData, patch, processing, errors, reset } =
+    const { data, setData, patch, processing, errors, reset, transform } =
         useForm<InputProgressFormData>({
             produk_id: '',
             karyawan_id: '',
@@ -42,16 +43,24 @@ export function InputProgressForm({
             disposisi_qc: '',
             rework_parent_id: '',
             catatan: '',
-            idempotency_key: crypto.randomUUID(),
+            // Generated immediately before request (SSR-safe).
+            idempotency_key: '',
         });
 
     const handleSubmit = (event: React.FormEvent) => {
         event.preventDefault();
+
+        const key = data.idempotency_key || createIdempotencyKey();
+        transform((formData) => ({
+            ...formData,
+            idempotency_key: key,
+        }));
+
         patch(produksi.progress.url(item.id), {
             preserveScroll: true,
             onSuccess: () => {
                 reset();
-                setData('idempotency_key', crypto.randomUUID());
+                setData('idempotency_key', createIdempotencyKey());
             },
         });
     };
@@ -149,7 +158,9 @@ export function InputProgressForm({
                 <div className="rounded-lg bg-muted/50 px-4 py-2.5 text-sm">
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                            {selectedRework ? 'Sisa perbaikan ulang' : 'Sisa target'}
+                            {selectedRework
+                                ? 'Sisa perbaikan ulang'
+                                : 'Sisa target'}
                         </span>
                         <span className="font-medium text-primary">
                             {selectedRework?.qty_aktif ?? selectedProduk?.sisa}{' '}
@@ -254,9 +265,15 @@ export function InputProgressForm({
                                 <SelectValue placeholder="Pilih disposisi..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="rework">{qcDispositionLabel('rework')}</SelectItem>
-                                <SelectItem value="jual_cacat">{qcDispositionLabel('jual_cacat')}</SelectItem>
-                                <SelectItem value="dimusnahkan">{qcDispositionLabel('dimusnahkan')}</SelectItem>
+                                <SelectItem value="rework">
+                                    {qcDispositionLabel('rework')}
+                                </SelectItem>
+                                <SelectItem value="jual_cacat">
+                                    {qcDispositionLabel('jual_cacat')}
+                                </SelectItem>
+                                <SelectItem value="dimusnahkan">
+                                    {qcDispositionLabel('dimusnahkan')}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                         {errors.disposisi_qc && (

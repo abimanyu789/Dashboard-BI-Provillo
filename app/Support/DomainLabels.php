@@ -69,15 +69,13 @@ final class DomainLabels
 
     /**
      * Label transaksi stok produk jadi.
-     * Catatan: internal value `produksi` di stok produk jadi berarti stok bertambah
-     * dari hasil QC lolos (bukan pengeluaran bahan). Label UI menyesuaikan konteks modul.
+     * Internal value `produksi` means stock increased from QC-pass output
+     * (not raw-material issue). Keep separate from STOK_BAHAN_TRANSAKSI.
      *
      * @var array<string, string>
      */
     public const STOK_PRODUK_TRANSAKSI = [
-        // Mapping resmi requirement: internal value `produksi` tetap,
-        // label user-facing = Pengeluaran untuk Produksi.
-        'produksi' => 'Pengeluaran untuk Produksi',
+        'produksi' => 'Hasil Produksi',
         'pengiriman' => 'Pengiriman Produk',
         'rollback' => 'Pengembalian dari Produksi',
         'penyesuaian' => 'Penyesuaian Stok',

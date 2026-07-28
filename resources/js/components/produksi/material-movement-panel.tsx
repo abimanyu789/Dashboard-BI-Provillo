@@ -200,11 +200,14 @@ export function MaterialMovementPanel({
             },
             {
                 preserveScroll: true,
-                onFinish: () => {
-                    setBulkProcessing(false);
+                onSuccess: () => {
                     setBulkConfirmOpen(false);
                     setBulkOpen(false);
                     setBulkRequestKey(createIdempotencyKey());
+                },
+                onFinish: () => {
+                    // Always re-enable on success and error so retries work.
+                    setBulkProcessing(false);
                 },
             },
         );

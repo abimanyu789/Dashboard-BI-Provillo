@@ -50,42 +50,32 @@ export const stokBahanTransaksiLabels: Record<JenisTransaksiStok, string> = {
 
 /**
  * Label transaksi stok produk jadi.
- * Catatan: internal value `produksi` di stok produk jadi berarti stok bertambah
- * dari hasil QC lolos (bukan pengeluaran bahan). Label UI menyesuaikan konteks modul.
+ * Internal value `produksi` means stock increased from QC-pass output
+ * (not raw-material issue). Keep separate from stokBahanTransaksiLabels.
  */
 export const stokProdukTransaksiLabels: Record<JenisTransaksiProduk, string> = {
-    // Mapping requirement: produksi → Pengeluaran untuk Produksi (internal value tetap).
-    // Di modul stok produk, entry jenis produksi biasanya penambahan hasil QC;
-    // tetap pakai mapping resmi agar badge/filter konsisten lintas modul.
-    produksi: 'Pengeluaran untuk Produksi',
+    produksi: 'Hasil Produksi',
     pengiriman: 'Pengiriman Produk',
     rollback: 'Pengembalian dari Produksi',
     penyesuaian: 'Penyesuaian Stok',
 };
 
 export function produksiStatusLabel(value: StatusProduksi | string): string {
-    return (
-        produksiStatusLabels[value as StatusProduksi] ??
-        String(value)
-    );
+    return produksiStatusLabels[value as StatusProduksi] ?? String(value);
 }
 
 export function materialMovementLabel(
     value: MaterialMovementType | string,
 ): string {
     return (
-        materialMovementLabels[value as MaterialMovementType] ??
-        String(value)
+        materialMovementLabels[value as MaterialMovementType] ?? String(value)
     );
 }
 
 export function materialAvailabilityLabel(
     value: MaterialStatus | string,
 ): string {
-    return (
-        materialAvailabilityLabels[value as MaterialStatus] ??
-        String(value)
-    );
+    return materialAvailabilityLabels[value as MaterialStatus] ?? String(value);
 }
 
 export function qcStatusLabel(value: QcStatus | string): string {
@@ -100,8 +90,7 @@ export function stokBahanTransaksiLabel(
     value: JenisTransaksiStok | string,
 ): string {
     return (
-        stokBahanTransaksiLabels[value as JenisTransaksiStok] ??
-        String(value)
+        stokBahanTransaksiLabels[value as JenisTransaksiStok] ?? String(value)
     );
 }
 

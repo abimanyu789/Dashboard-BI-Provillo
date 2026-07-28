@@ -95,12 +95,23 @@ export default function ProduksiShow({
 
         return remaining > 0.00001;
     });
+    const targetNotMet = item.qty_selesai < item.qty_target;
+    const completionBlockers = [
+        targetNotMet
+            ? `Jumlah lolos QC belum mencapai target (${item.qty_selesai} / ${item.qty_target} pcs).`
+            : null,
+        hasUnresolvedFailedQc
+            ? 'Masih ada hasil Tidak Lolos Pemeriksaan tanpa disposisi.'
+            : null,
+        activeRework.length > 0
+            ? 'Masih ada antrean Perbaikan Ulang (rework) aktif.'
+            : null,
+        hasUnbalancedMaterial
+            ? 'Masih ada bahan yang sudah dikeluarkan tetapi belum ditandai terpakai atau dikembalikan.'
+            : null,
+    ].filter((reason): reason is string => reason !== null);
     const isSelesaiEnabled =
-        item.status === 'proses' &&
-        item.qty_selesai >= item.qty_target &&
-        activeRework.length === 0 &&
-        !hasUnresolvedFailedQc &&
-        !hasUnbalancedMaterial;
+        item.status === 'proses' && completionBlockers.length === 0;
 
     return (
         <>
@@ -142,38 +153,33 @@ export default function ProduksiShow({
                         {hasMaterialShortage && (
                             <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
                                 Peringatan: masih ada kekurangan stok bahan
-                                terhadap rencana. Produksi dapat berjalan, tetapi
-                                keluarkan bahan hanya sampai stok gudang
+                                terhadap rencana. Produksi dapat berjalan,
+                                tetapi keluarkan bahan hanya sampai stok gudang
                                 mencukupi.
                             </div>
                         )}
                         {hasUnissuedPlan && (
                             <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
                                 Produksi telah dimulai. Kebutuhan bahan sudah
-                                dihitung, tetapi stok belum dikurangi. Keluarkan
-                                bahan dari gudang untuk mencatat perubahan stok.
+                                dihitung, tetapi stok gudang belum dikurangi.
+                                Gunakan tombol{' '}
+                                <span className="font-semibold">
+                                    Keluarkan Bahan untuk Produksi
+                                </span>{' '}
+                                agar stok tercatat.
                             </div>
                         )}
-                        {hasUnbalancedMaterial && (
-                            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
-                                Masih ada bahan yang sudah dikeluarkan tetapi
-                                belum ditandai terpakai atau dikembalikan.
-                                Selesaikan pergerakan bahan sebelum menutup
-                                produksi.
-                            </div>
-                        )}
-                        {activeRework.length > 0 && (
-                            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
-                                Ada antrean Perbaikan Ulang aktif. Produksi belum
-                                dapat diselesaikan sampai rework selesai atau
-                                disposisi final ditetapkan.
-                            </div>
-                        )}
-                        {hasUnresolvedFailedQc && (
+                        {completionBlockers.length > 0 && (
                             <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-                                Ada hasil Tidak Lolos Pemeriksaan tanpa
-                                disposisi. Lengkapi disposisi sebelum menyelesaikan
-                                produksi.
+                                <p className="font-medium">
+                                    Produksi belum dapat diselesaikan.
+                                    Selesaikan dulu checklist berikut:
+                                </p>
+                                <ul className="mt-2 list-disc space-y-1 pl-5">
+                                    {completionBlockers.map((reason) => (
+                                        <li key={reason}>{reason}</li>
+                                    ))}
+                                </ul>
                             </div>
                         )}
                     </div>
