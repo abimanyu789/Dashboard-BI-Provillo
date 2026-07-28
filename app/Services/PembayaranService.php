@@ -59,26 +59,26 @@ class PembayaranService
             }
 
             $pembayaran = Pembayaran::create([
-                'pesanan_id'       => $pesanan->id,
-                'tanggal'          => $data['tanggal'],
+                'pesanan_id' => $pesanan->id,
+                'tanggal' => $data['tanggal'],
                 'jenis_pembayaran' => $data['jenis_pembayaran'],
-                'nominal'          => $nominal,
-                'metode'           => $data['metode'] ?? null,
-                'keterangan'       => $data['keterangan'] ?? null,
+                'nominal' => $nominal,
+                'metode' => $data['metode'] ?? null,
+                'keterangan' => $data['keterangan'] ?? null,
             ]);
 
             // Auto-create entry arus kas sebagai pemasukan
             ArusKas::create([
-                'pembayaran_id'     => $pembayaran->id,
-                'created_by'        => $createdBy,
-                'tanggal'           => $data['tanggal'],
-                'jenis'             => 'pemasukan',
-                'kategori'          => 'Pendapatan Penjualan',
-                'nominal'           => $nominal,
+                'pembayaran_id' => $pembayaran->id,
+                'created_by' => $createdBy,
+                'tanggal' => $data['tanggal'],
+                'jenis' => 'pemasukan',
+                'kategori' => 'Pendapatan Penjualan',
+                'nominal' => $nominal,
                 'metode_pembayaran' => $data['metode'] ?? null,
-                'keterangan'        => "Pembayaran pesanan {$pesanan->nomor_pesanan}".
-                                       ($data['keterangan'] ? " — {$data['keterangan']}" : ''),
-                'bukti_transaksi'   => null,
+                'keterangan' => "Pembayaran pesanan {$pesanan->nomor_pesanan}"
+                    .(! empty($data['keterangan']) ? " — {$data['keterangan']}" : ''),
+                'bukti_transaksi' => null,
             ]);
 
             // BR-PSN-13 + BR-PSN-10: promote pending→proses, lalu evaluasi auto-selesai

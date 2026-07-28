@@ -136,14 +136,50 @@ supaya file ini diperbaiki lagi.
 | qty_target | int | NOT NULL — target per produk pada produksi ini |
 | created_at / updated_at | timestamp | nullable |
 
-### `detail_produksi` (histori progress per produk)
+### `detail_produksi` (histori progress per produk dan pekerja)
 | Kolom | Tipe | Ket |
 |---|---|---|
 | id | bigint unsigned | PK |
 | produksi_id | bigint unsigned | NOT NULL, FK → `produksi.id` (RESTRICT) |
 | produk_id | bigint unsigned | NOT NULL, FK → `produk.id` (RESTRICT) |
-| qty_selesai | int | NOT NULL — qty yang dilaporkan pada entry ini |
-| qc_status | enum(`lolos`,`tidak_lolos`) | NOT NULL — hasil QC saat input progress |
+| karyawan_id | bigint unsigned | nullable, FK → `karyawan.id` (RESTRICT); nullable hanya untuk data historis lama |
+| qty_selesai | int | NOT NULL — qty pada entry QC ini |
+| qc_status | enum(`lolos`,`tidak_lolos`) | NOT NULL |
+| alasan_qc | text | nullable; wajib untuk data gagal baru |
+| disposisi_qc | enum(`rework`,`jual_cacat`,`dimusnahkan`) | nullable; wajib untuk data gagal baru |
+| rework_parent_id | bigint unsigned | nullable, self-FK → `detail_produksi.id` (RESTRICT) |
+| catatan | text | nullable |
+| inspected_by | bigint unsigned | nullable, FK → `users.id` (RESTRICT) |
+| inspected_at | timestamp | nullable |
+| idempotency_key | varchar(100) | nullable, unique; nullable untuk data historis lama |
+| created_at / updated_at | timestamp | nullable |
+
+### `produksi_pemakaian_bahan` (ledger material produksi)
+| Kolom | Tipe | Ket |
+|---|---|---|
+| id | bigint unsigned | PK |
+| produksi_id | bigint unsigned | NOT NULL, FK → `produksi.id` (RESTRICT) |
+| bahan_baku_id | bigint unsigned | NOT NULL, FK → `bahan_baku.id` (RESTRICT) |
+| movement_type | enum(`planned`,`issued`,`consumed`,`additional`,`returned`,`adjustment`) | NOT NULL |
+| qty | decimal(12,2) | NOT NULL; adjustment dapat bertanda positif/negatif, tipe lain positif |
+| tanggal | date | NOT NULL |
+| keterangan | text | nullable; wajib untuk adjustment |
+| created_by | bigint unsigned | NOT NULL, FK → `users.id` (RESTRICT) |
+| idempotency_key | varchar(100) | NOT NULL, unique |
+| created_at / updated_at | timestamp | nullable |
+
+### `stok_produk_cacat` (audit produk gagal QC)
+| Kolom | Tipe | Ket |
+|---|---|---|
+| id | bigint unsigned | PK |
+| detail_produksi_id | bigint unsigned | NOT NULL, unique, FK → `detail_produksi.id` (RESTRICT) |
+| produksi_id | bigint unsigned | NOT NULL, FK → `produksi.id` (RESTRICT) |
+| produk_id | bigint unsigned | NOT NULL, FK → `produk.id` (RESTRICT) |
+| disposisi | enum(`jual_cacat`,`dimusnahkan`) | NOT NULL |
+| qty | int | NOT NULL |
+| alasan_qc | text | NOT NULL |
+| catatan | text | nullable |
+| created_by | bigint unsigned | NOT NULL, FK → `users.id` (RESTRICT) |
 | created_at / updated_at | timestamp | nullable |
 
 ### `produksi_karyawan` (daftar tim karyawan yang terlibat pada produksi)
@@ -186,6 +222,7 @@ supaya file ini diperbaiki lagi.
 |---|---|---|
 | id | bigint unsigned | PK |
 | bahan_baku_id | bigint unsigned | NOT NULL, FK → `bahan_baku.id` (RESTRICT) |
+| produksi_pemakaian_bahan_id | bigint unsigned | nullable, unique, FK → `produksi_pemakaian_bahan.id` (RESTRICT) |
 | jenis_transaksi | enum(`restock`,`produksi`,`rollback`,`penyesuaian`) | NOT NULL |
 | qty | decimal(12,2) | NOT NULL — selisih perubahan |
 | stok_sebelum | decimal(12,2) | NOT NULL |
@@ -224,6 +261,13 @@ supaya file ini diperbaiki lagi.
 - `produksi` n—n `karyawan` via `produksi_karyawan` (RESTRICT) — daftar tim, bukan histori
 - `produksi` 1—n `detail_produksi` (RESTRICT)
 - `produk` 1—n `detail_produksi` (RESTRICT)
+- `karyawan` 1—n `detail_produksi` melalui `karyawan_id` nullable untuk kompatibilitas data lama
+- `users` 1—n `detail_produksi` melalui `inspected_by`
+- `detail_produksi` self 1—n melalui `rework_parent_id`
+- `produksi` 1—n `produksi_pemakaian_bahan` (RESTRICT)
+- `bahan_baku` 1—n `produksi_pemakaian_bahan` (RESTRICT)
+- `detail_produksi` 1—0..1 `stok_produk_cacat` (RESTRICT)
+- `produksi`/`produk` 1—n `stok_produk_cacat` (RESTRICT)
 - `pesanan` 1—n `pembayaran` (RESTRICT)
 - `pembayaran` 1—n `arus_kas` (pembayaran_id, nullable, RESTRICT)
 - `bahan_baku` 1—n `stok_bahan_baku` (RESTRICT)
@@ -242,9 +286,10 @@ supaya file ini diperbaiki lagi.
   di-populate otomatis dari `detail_pesanan`. Untuk Produksi Restok, diisi manual oleh admin.
 - **Tabel `produksi_karyawan` ditambahkan** sebagai pivot daftar tim karyawan yang terlibat
   dalam produksi. Dipilih saat Create Produksi. Bukan histori progress.
-- **`detail_produksi` direvisi**: kolom `karyawan_id` dihapus sepenuhnya (progress = output
-  tim, bukan laporan per individu). Kolom `qc_status` enum(`lolos`,`tidak_lolos`) ditambahkan
-  agar histori QC dapat diaudit dan progress bar QC dapat dihitung.
+- **`detail_produksi` diperluas melalui migration baru**: progress baru wajib memiliki `karyawan_id`; data lama tetap aman dengan nilai nullable dan tidak dihitung sebagai dasar upah. QC gagal lama tidak diberi alasan/disposisi secara otomatis dan harus ditinjau manual.
+- **Ledger material `produksi_pemakaian_bahan` ditambahkan**: `planned` tidak mengubah stok; `issued`/`additional` mengurangi stok; `consumed` tidak mengubah stok lagi; `returned` menambah stok sesuai batas returnable; adjustment wajib alasan.
+- **Ledger `stok_produk_cacat` ditambahkan** untuk disposisi `jual_cacat` dan `dimusnahkan`; ledger ini terpisah dari stok produk jadi normal.
+- **Source link nullable + unique** ditambahkan ke log stok agar satu movement/progress tidak dapat mem-posting perubahan stok lebih dari sekali.
 - **`pesanan.jenis_pembayaran`** ditambahkan sebagai kontrak pembayaran yang disepakati saat
   order (DP, Lunas, Bertahap, COD, Termin). Berbeda dari `pembayaran.jenis_pembayaran` yang
   mencatat realisasi per transaksi bayar.

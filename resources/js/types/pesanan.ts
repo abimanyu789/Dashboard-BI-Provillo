@@ -1,4 +1,5 @@
 import type { Customer } from './customer';
+import type { Pembayaran } from './pembayaran';
 import type { Produk } from './produk';
 
 export type StatusPesanan = 'pending' | 'proses' | 'selesai' | 'dibatalkan';
@@ -26,6 +27,7 @@ export interface Pesanan {
     nomor_pesanan: string;
     tanggal: string;
     status: StatusPesanan;
+    status_pembayaran?: 'belum_bayar' | 'sebagian' | 'lunas';
     jenis_pembayaran: JenisPembayaranPesanan | null;
     subtotal: string;
     diskon: string;
@@ -39,7 +41,7 @@ export interface Pesanan {
     customer?: Customer;
     created_by_user?: { id: number; nama: string };
     detail_pesanan?: DetailPesanan[];
-    pembayarans?: import('./pembayaran').Pembayaran[];
+    pembayarans?: Pembayaran[];
 }
 
 // ─── Form data ───────────────────────────────────────────────────────────────

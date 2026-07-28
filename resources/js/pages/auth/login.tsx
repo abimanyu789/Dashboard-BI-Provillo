@@ -17,7 +17,7 @@ type Props = {
 };
 
 export default function Login({ status, canResetPassword }: Props) {
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
         remember: false as boolean,
@@ -30,7 +30,7 @@ export default function Login({ status, canResetPassword }: Props) {
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        post(store.url(), { resetOnSuccess: ['password'] });
+        post(store.url(), { onSuccess: () => reset('password') });
     };
 
     return (
@@ -83,7 +83,9 @@ export default function Login({ status, canResetPassword }: Props) {
                             id="password"
                             name="password"
                             value={data.password}
-                            onChange={(e) => setData('password', e.target.value)}
+                            onChange={(e) =>
+                                setData('password', e.target.value)
+                            }
                             tabIndex={2}
                             autoComplete="current-password"
                             placeholder="masukkan password Anda"
@@ -100,7 +102,9 @@ export default function Login({ status, canResetPassword }: Props) {
                             id="remember"
                             name="remember"
                             checked={data.remember}
-                            onCheckedChange={(checked) => setData('remember', !!checked)}
+                            onCheckedChange={(checked) =>
+                                setData('remember', !!checked)
+                            }
                             tabIndex={3}
                         />
                         <Label htmlFor="remember">Ingat saya</Label>
@@ -131,5 +135,6 @@ export default function Login({ status, canResetPassword }: Props) {
 
 Login.layout = {
     title: 'Masuk ke SIMOPRO',
-    description: 'Masukkan email dan password untuk mengakses sistem manajemen operasional provillo',
+    description:
+        'Masukkan email dan password untuk mengakses sistem manajemen operasional provillo',
 };

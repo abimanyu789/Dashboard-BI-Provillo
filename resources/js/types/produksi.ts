@@ -1,13 +1,19 @@
 import type { Customer } from './customer';
-import type { Pesanan } from './pesanan';
-import type { Produk } from './produk';
+import type { DetailPesanan, Pesanan } from './pesanan';
 
 export type StatusProduksi = 'draft' | 'proses' | 'selesai' | 'dibatalkan';
 export type StatusQc = 'belum_dicek' | 'lolos' | 'tidak_lolos';
 export type JenisProduksi = 'pesanan' | 'restok';
 export type QcStatus = 'lolos' | 'tidak_lolos';
-
-// ─── Entitas DB ───────────────────────────────────────────────────────────────
+export type QcDisposition = 'rework' | 'jual_cacat' | 'dimusnahkan';
+export type MaterialMovementType =
+    | 'planned'
+    | 'issued'
+    | 'consumed'
+    | 'additional'
+    | 'returned'
+    | 'adjustment';
+export type MaterialStatus = 'sufficient' | 'shortage' | 'fulfilled';
 
 export interface ProduksiItem {
     id: number;
@@ -32,12 +38,26 @@ export interface ProduksiKaryawan {
     };
 }
 
+export interface StokProdukCacat {
+    id: number;
+    detail_produksi_id: number;
+    disposisi: Exclude<QcDisposition, 'rework'>;
+    qty: number;
+}
+
 export interface DetailProduksi {
     id: number;
     produksi_id: number;
     produk_id: number;
+    karyawan_id: number | null;
     qty_selesai: number;
     qc_status: QcStatus;
+    alasan_qc: string | null;
+    disposisi_qc: QcDisposition | null;
+    rework_parent_id: number | null;
+    catatan: string | null;
+    inspected_by: number | null;
+    inspected_at: string | null;
     created_at: string;
     updated_at: string;
     produk?: {
@@ -45,6 +65,43 @@ export interface DetailProduksi {
         kode_produk: string;
         nama_produk: string;
     };
+    karyawan?: {
+        id: number;
+        nama_karyawan: string;
+        jabatan: string | null;
+    } | null;
+    inspector?: {
+        id: number;
+        name: string;
+    } | null;
+    rework_results?: DetailProduksi[];
+    defect_ledger?: StokProdukCacat | null;
+}
+
+export interface MaterialMovement {
+    id: number;
+    produksi_id: number;
+    bahan_baku_id: number;
+    movement_type: MaterialMovementType;
+    qty: number;
+    tanggal: string;
+    keterangan: string | null;
+    created_at: string;
+    bahan_baku?: {
+        id: number;
+        kode_bahan: string;
+        nama_bahan: string;
+        satuan: string | null;
+    };
+    created_by?: {
+        id: number;
+        name: string;
+    };
+    stok_history?: {
+        id: number;
+        stok_sebelum: number;
+        stok_sesudah: number;
+    } | null;
 }
 
 export interface Produksi {
@@ -60,14 +117,13 @@ export interface Produksi {
     catatan: string | null;
     created_at: string;
     updated_at: string;
-    // Relasi
     pesanan?: Pesanan & { customer?: Customer };
     produksi_items?: ProduksiItem[];
     produksi_karyawans?: ProduksiKaryawan[];
     detail_produksi?: DetailProduksi[];
+    material_movements?: MaterialMovement[];
+    defect_ledgers?: StokProdukCacat[];
 }
-
-// ─── Progress per produk ──────────────────────────────────────────────────────
 
 export interface ProgressPerProduk {
     [produkId: number]: {
@@ -87,8 +143,6 @@ export interface ProdukBelumSelesai {
     sisa: number;
 }
 
-// ─── Kebutuhan bahan dari BOM ─────────────────────────────────────────────────
-
 export interface KebutuhanBahan {
     id: number;
     kode_bahan: string;
@@ -99,7 +153,54 @@ export interface KebutuhanBahan {
     cukup: boolean;
 }
 
-// ─── Form data ────────────────────────────────────────────────────────────────
+export interface MaterialSummary {
+    id: number;
+    kode_bahan: string;
+    nama_bahan: string;
+    satuan: string;
+    planned: number;
+    available: number;
+    issued: number;
+    consumed: number;
+    returned: number;
+    shortage: number;
+    returnable: number;
+    status: MaterialStatus;
+}
+
+export interface MaterialOption {
+    id: number;
+    kode_bahan: string;
+    nama_bahan: string;
+    satuan: string | null;
+    stok: number;
+}
+
+export interface ActiveRework {
+    id: number;
+    produk_id: number;
+    produk?: ProduksiItem['produk'];
+    karyawan?: ProduksiKaryawan['karyawan'] | null;
+    qty_gagal: number;
+    qty_diproses: number;
+    qty_aktif: number;
+    alasan_qc: string | null;
+    created_at: string;
+}
+
+export interface QcSummary {
+    lolos: number;
+    tidak_lolos: number;
+    jual_cacat: number;
+    dimusnahkan: number;
+    rework_aktif: number;
+}
+
+export interface WageBasis {
+    karyawan_id: number;
+    nama: string;
+    qty_lolos: number;
+}
 
 export interface ProduksiItemRestokFormData {
     produk_id: number | '';
@@ -117,11 +218,24 @@ export interface ProduksiFormData {
 
 export interface InputProgressFormData {
     produk_id: number | '';
+    karyawan_id: number | '';
     qty: number | '';
     qc_status: QcStatus;
+    alasan_qc: string;
+    disposisi_qc: QcDisposition | '';
+    rework_parent_id: number | '';
+    catatan: string;
+    idempotency_key: string;
 }
 
-// ─── Options untuk dropdown ───────────────────────────────────────────────────
+export interface MaterialMovementFormData {
+    bahan_baku_id: number | '';
+    movement_type: Exclude<MaterialMovementType, 'planned'>;
+    qty: number | '';
+    tanggal: string;
+    keterangan: string;
+    idempotency_key: string;
+}
 
 export interface PesananOption {
     id: number;
@@ -145,8 +259,6 @@ export interface KaryawanOption {
     jabatan: string | null;
 }
 
-// ─── Summary cards ────────────────────────────────────────────────────────────
-
 export interface ProduksiSummary {
     batch_hari_ini: number;
     qty_selesai_hari_ini: number;
@@ -161,8 +273,6 @@ export interface ProduksiSummary {
         persentase: number;
     };
 }
-
-// ─── Props interfaces ─────────────────────────────────────────────────────────
 
 export interface ProduksiPagination {
     data: Produksi[];
@@ -193,7 +303,7 @@ export interface ProduksiCreateProps {
     selectedPesanan:
         | (Pesanan & {
               customer?: Customer;
-              detail_pesanan?: import('./pesanan').DetailPesanan[];
+              detail_pesanan?: DetailPesanan[];
           })
         | null;
     kebutuhanBahan: KebutuhanBahan[];
@@ -205,4 +315,9 @@ export interface ProduksiShowProps {
     stokCukup: boolean;
     progressPerProduk: ProgressPerProduk;
     produkBelumSelesai: ProdukBelumSelesai[];
+    materialSummary: MaterialSummary[];
+    materialOptions: MaterialOption[];
+    activeRework: ActiveRework[];
+    qcSummary: QcSummary;
+    wageBasis: WageBasis[];
 }

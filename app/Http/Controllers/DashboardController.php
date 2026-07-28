@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Pesanan;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function index(\Illuminate\Http\Request $request)
+    public function index(Request $request)
     {
         $filter = $request->query('filter', 'bulan_ini');
         $startDate = $request->query('start_date', '');
@@ -33,6 +36,7 @@ class DashboardController extends Controller
 
         // Top Employee Performance
         $topEmployees = $this->getTopEmployees();
+        $operationalIndicators = $this->getOperationalIndicators();
 
         return Inertia::render('dashboard', [
             'stats' => [
@@ -47,6 +51,7 @@ class DashboardController extends Controller
             'bestSellers' => $bestSellers,
             'activeOrders' => $activeOrders,
             'topEmployees' => $topEmployees,
+            'operationalIndicators' => $operationalIndicators,
             'filter' => $filter,
         ]);
     }
@@ -62,12 +67,12 @@ class DashboardController extends Controller
             $previousQuery = DB::table('arus_kas')->where('jenis', $jenis);
 
             if ($filter === 'range' && $startDate && $endDate) {
-                $start = \Carbon\Carbon::parse($startDate)->startOfDay();
-                $end = \Carbon\Carbon::parse($endDate)->endOfDay();
+                $start = Carbon::parse($startDate)->startOfDay();
+                $end = Carbon::parse($endDate)->endOfDay();
                 $diffInDays = $start->diffInDays($end) + 1;
 
                 $currentQuery->whereBetween('tanggal', [$start, $end]);
-                
+
                 $prevStart = $start->copy()->subDays($diffInDays);
                 $prevEnd = $end->copy()->subDays($diffInDays);
                 $previousQuery->whereBetween('tanggal', [$prevStart, $prevEnd]);
@@ -122,7 +127,7 @@ class DashboardController extends Controller
             $prevPeng = DB::table('arus_kas')->where('jenis', 'pengeluaran');
 
             if ($filter === 'range' && $startDate && $endDate) {
-                $start = \Carbon\Carbon::parse($startDate)->startOfDay();
+                $start = Carbon::parse($startDate)->startOfDay();
                 $prevPem->where('tanggal', '<', $start);
                 $prevPeng->where('tanggal', '<', $start);
             } elseif ($filter === 'bulan_ini') {
@@ -183,8 +188,6 @@ class DashboardController extends Controller
         }
     }
 
-
-
     private function getSelesaiProduksi(string $filter, string $startDate = '', string $endDate = ''): int
     {
         if (! Schema::hasTable('produksi')) {
@@ -193,17 +196,18 @@ class DashboardController extends Controller
 
         try {
             $query = DB::table('produksi');
-            
+
             if ($filter === 'range' && $startDate && $endDate) {
-                $start = \Carbon\Carbon::parse($startDate)->startOfDay();
-                $end = \Carbon\Carbon::parse($endDate)->endOfDay();
+                $start = Carbon::parse($startDate)->startOfDay();
+                $end = Carbon::parse($endDate)->endOfDay();
                 $query->whereBetween('updated_at', [$start, $end]);
             } elseif ($filter === 'bulan_ini') {
                 $query->whereMonth('updated_at', now()->month)
-                      ->whereYear('updated_at', now()->year);
+                    ->whereYear('updated_at', now()->year);
             } elseif ($filter === 'tahun_ini') {
                 $query->whereYear('updated_at', now()->year);
             }
+
             return (int) $query->sum('qty_selesai');
         } catch (\Exception $e) {
             return 0;
@@ -279,14 +283,14 @@ class DashboardController extends Controller
                     'produk.nama_produk',
                     DB::raw('SUM(detail_pesanan.qty) as total_qty')
                 );
-            
+
             if ($filter === 'range' && $startDate && $endDate) {
-                $start = \Carbon\Carbon::parse($startDate)->startOfDay();
-                $end = \Carbon\Carbon::parse($endDate)->endOfDay();
+                $start = Carbon::parse($startDate)->startOfDay();
+                $end = Carbon::parse($endDate)->endOfDay();
                 $query->whereBetween('pesanan.tanggal', [$start, $end]);
             } elseif ($filter === 'bulan_ini') {
                 $query->whereMonth('pesanan.tanggal', now()->month)
-                      ->whereYear('pesanan.tanggal', now()->year);
+                    ->whereYear('pesanan.tanggal', now()->year);
             } elseif ($filter === 'tahun_ini') {
                 $query->whereYear('pesanan.tanggal', now()->year);
             }
@@ -367,36 +371,114 @@ class DashboardController extends Controller
 
     private function getTopEmployees(): array
     {
-        if (! Schema::hasTable('produksi_karyawan') || ! Schema::hasTable('karyawan') || ! Schema::hasTable('produksi')) {
+        if (! Schema::hasTable('detail_produksi') || ! Schema::hasColumn('detail_produksi', 'karyawan_id')) {
             return [];
         }
 
-        try {
-            // Karyawan terlibat produksi dicatat di produksi_karyawan.
-            // Output per produksi diambil dari produksi.qty_selesai (total unit selesai per batch produksi).
-            return DB::table('produksi_karyawan')
-                ->join('karyawan', 'produksi_karyawan.karyawan_id', '=', 'karyawan.id')
-                ->join('produksi', 'produksi_karyawan.produksi_id', '=', 'produksi.id')
-                ->select(
-                    'karyawan.id',
-                    'karyawan.nama_karyawan',
-                    'karyawan.jabatan',
-                    DB::raw('SUM(produksi.qty_selesai) as total_output')
-                )
-                ->where('karyawan.status', 'aktif')
-                ->where('produksi.status', 'selesai')
-                ->groupBy('karyawan.id', 'karyawan.nama_karyawan', 'karyawan.jabatan')
-                ->orderByDesc('total_output')
-                ->limit(3)
-                ->get()
-                ->map(fn ($item) => [
-                    'nama_karyawan' => $item->nama_karyawan,
-                    'jabatan'       => $item->jabatan ?? 'Karyawan',
-                    'total_output'  => (int) $item->total_output,
-                ])
-                ->toArray();
-        } catch (\Exception $e) {
-            return [];
+        return DB::table('detail_produksi')
+            ->join('karyawan', 'detail_produksi.karyawan_id', '=', 'karyawan.id')
+            ->whereNotNull('detail_produksi.karyawan_id')
+            ->where('detail_produksi.qc_status', 'lolos')
+            ->select(
+                'karyawan.id',
+                'karyawan.nama_karyawan',
+                'karyawan.jabatan',
+                DB::raw('SUM(detail_produksi.qty_selesai) as total_output'),
+            )
+            ->groupBy('karyawan.id', 'karyawan.nama_karyawan', 'karyawan.jabatan')
+            ->orderByDesc('total_output')
+            ->limit(3)
+            ->get()
+            ->map(fn ($item): array => [
+                'nama_karyawan' => $item->nama_karyawan,
+                'jabatan' => $item->jabatan ?? 'Karyawan',
+                'total_output' => (int) $item->total_output,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array{
+     *     activeRework: int,
+     *     failedQcQty: int,
+     *     productionsWithShortage: int,
+     *     outstandingReceivables: float,
+     *     ordersNotFullyShipped: int
+     * }
+     */
+    private function getOperationalIndicators(): array
+    {
+        if (! Schema::hasTable('produksi_pemakaian_bahan')) {
+            return [
+                'activeRework' => 0,
+                'failedQcQty' => 0,
+                'productionsWithShortage' => 0,
+                'outstandingReceivables' => 0.0,
+                'ordersNotFullyShipped' => 0,
+            ];
         }
+
+        $activeRework = DB::table('detail_produksi as failed')
+            ->leftJoin('detail_produksi as result', 'result.rework_parent_id', '=', 'failed.id')
+            ->where('failed.qc_status', 'tidak_lolos')
+            ->where('failed.disposisi_qc', 'rework')
+            ->groupBy('failed.id', 'failed.qty_selesai')
+            ->selectRaw(
+                'failed.qty_selesai as failed_qty, COALESCE(SUM(result.qty_selesai), 0) as processed_qty'
+            )
+            ->get()
+            ->sum(
+                fn ($row): int => max(0, (int) $row->failed_qty - (int) $row->processed_qty)
+            );
+
+        $productionsWithShortage = DB::query()
+            ->fromSub(
+                DB::table('produksi_pemakaian_bahan')
+                    ->join('produksi', 'produksi_pemakaian_bahan.produksi_id', '=', 'produksi.id')
+                    ->join('bahan_baku', 'produksi_pemakaian_bahan.bahan_baku_id', '=', 'bahan_baku.id')
+                    ->where('produksi.status', 'proses')
+                    ->groupBy(
+                        'produksi_pemakaian_bahan.produksi_id',
+                        'produksi_pemakaian_bahan.bahan_baku_id',
+                    )
+                    ->havingRaw(
+                        "SUM(CASE WHEN movement_type = 'planned' THEN qty ELSE 0 END) > "
+                        ."SUM(CASE WHEN movement_type IN ('issued', 'additional') THEN qty "
+                        ."WHEN movement_type = 'returned' THEN -qty ELSE 0 END) + MAX(bahan_baku.stok)"
+                    )
+                    ->select('produksi_pemakaian_bahan.produksi_id'),
+                'shortages',
+            )
+            ->distinct()
+            ->count('produksi_id');
+
+        $outstandingReceivables = DB::table('pesanan')
+            ->leftJoin('pembayaran', 'pembayaran.pesanan_id', '=', 'pesanan.id')
+            ->where('pesanan.status', '!=', 'dibatalkan')
+            ->groupBy('pesanan.id', 'pesanan.total')
+            ->selectRaw(
+                'pesanan.total as order_total, COALESCE(SUM(pembayaran.nominal), 0) as paid_total'
+            )
+            ->get()
+            ->sum(
+                fn ($row): float => max(0.0, (float) $row->order_total - (float) $row->paid_total)
+            );
+
+        $ordersNotFullyShipped = Pesanan::query()
+            ->whereIn('status', ['pending', 'proses'])
+            ->with('detailPesanan')
+            ->get()
+            ->filter(fn (Pesanan $pesanan): bool => ! $pesanan->isFullyShipped())
+            ->count();
+
+        return [
+            'activeRework' => (int) $activeRework,
+            'failedQcQty' => (int) DB::table('detail_produksi')
+                ->where('qc_status', 'tidak_lolos')
+                ->sum('qty_selesai'),
+            'productionsWithShortage' => $productionsWithShortage,
+            'outstandingReceivables' => (float) $outstandingReceivables,
+            'ordersNotFullyShipped' => $ordersNotFullyShipped,
+        ];
     }
 }

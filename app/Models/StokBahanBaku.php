@@ -21,11 +21,13 @@ class StokBahanBaku extends Model
      */
     protected $fillable = [
         'bahan_baku_id',
+        'produksi_pemakaian_bahan_id',
         'jenis_transaksi',
         'qty',
         'stok_sebelum',
         'stok_sesudah',
         'keterangan',
+        'created_by',
     ];
 
     /**
@@ -34,9 +36,9 @@ class StokBahanBaku extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'qty'           => 'float',
-        'stok_sebelum'  => 'float',
-        'stok_sesudah'  => 'float',
+        'qty' => 'float',
+        'stok_sebelum' => 'float',
+        'stok_sesudah' => 'float',
     ];
 
     /**
@@ -45,5 +47,15 @@ class StokBahanBaku extends Model
     public function bahanBaku(): BelongsTo
     {
         return $this->belongsTo(BahanBaku::class, 'bahan_baku_id');
+    }
+
+    public function materialMovement(): BelongsTo
+    {
+        return $this->belongsTo(ProduksiPemakaianBahan::class, 'produksi_pemakaian_bahan_id');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

@@ -1,8 +1,10 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, CheckCircle, Users, XCircle } from 'lucide-react';
 import { InputProgressForm } from '@/components/produksi/input-progress-form';
+import { MaterialMovementPanel } from '@/components/produksi/material-movement-panel';
 import { ProduksiActionDialog } from '@/components/produksi/produksi-action-dialog';
 import { ProduksiStatusBadge } from '@/components/produksi/produksi-status-badge';
+import { QcHistoryPanel } from '@/components/produksi/qc-history-panel';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -24,12 +26,7 @@ import {
 } from '@/components/ui/table';
 import pesanan from '@/routes/pesanan';
 import produksiRoute from '@/routes/produksi';
-import type {
-    KebutuhanBahan,
-    ProdukBelumSelesai,
-    ProgressPerProduk,
-    ProduksiShowProps,
-} from '@/types';
+import type { KebutuhanBahan, ProduksiShowProps } from '@/types';
 
 export default function ProduksiShow({
     produksi: item,
@@ -37,9 +34,17 @@ export default function ProduksiShow({
     stokCukup,
     progressPerProduk,
     produkBelumSelesai,
+    materialSummary,
+    materialOptions,
+    activeRework,
+    qcSummary,
+    wageBasis,
 }: ProduksiShowProps) {
     const formatDate = (s: string | null) => {
-        if (!s) return '-';
+        if (!s) {
+            return '-';
+        }
+
         return new Date(s).toLocaleDateString('id-ID', {
             day: 'numeric',
             month: 'long',
@@ -72,8 +77,19 @@ export default function ProduksiShow({
         .reduce((s, d) => s + d.qty_selesai, 0);
     const totalTidakLolos = totalProgress - totalLolos;
 
+    const hasUnresolvedFailedQc = (item.detail_produksi ?? []).some(
+        (detail) =>
+            detail.qc_status === 'tidak_lolos' && detail.disposisi_qc === null,
+    );
+    const hasUnbalancedMaterial = materialSummary.some(
+        (material) => material.returnable > 0,
+    );
     const isSelesaiEnabled =
-        item.status === 'proses' && item.qty_selesai >= item.qty_target;
+        item.status === 'proses' &&
+        item.qty_selesai >= item.qty_target &&
+        activeRework.length === 0 &&
+        !hasUnresolvedFailedQc &&
+        !hasUnbalancedMaterial;
 
     return (
         <>
@@ -215,6 +231,7 @@ export default function ProduksiShow({
                                             target: pi.qty_target,
                                             selesai: false,
                                         };
+
                                         return (
                                             <TableRow key={pi.id}>
                                                 <TableCell>
@@ -517,19 +534,11 @@ export default function ProduksiShow({
                                 </DialogContent>
                             </Dialog>
                         )}
-
-                        {/* Warning stok tidak cukup */}
-                        {item.status === 'draft' &&
-                            !stokCukup && (
-                                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-                                    Stok bahan baku tidak mencukupi atau terdapat produk yang belum memiliki BOM. Produksi belum bisa dimulai. Pastikan seluruh produk memiliki BOM dan lakukan restock terlebih dahulu.
-                                </div>
-                            )}
                     </div>
                 </div>
 
                 {/* Section Form & Histori */}
-                <div className="grid gap-6 lg:grid-cols-3 mt-2">
+                <div className="mt-2 grid gap-6 lg:grid-cols-3">
                     {/* Section Input Progress — hanya saat proses */}
                     {item.status === 'proses' && (
                         <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border">
@@ -539,12 +548,15 @@ export default function ProduksiShow({
                             <InputProgressForm
                                 produksi={item}
                                 produkBelumSelesai={produkBelumSelesai}
+                                activeRework={activeRework}
                             />
                         </div>
                     )}
 
                     {/* Histori Progress */}
-                    <div className={`h-fit rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border ${item.status !== 'proses' ? 'lg:col-span-3' : 'lg:col-span-2'}`}>
+                    <div
+                        className={`h-fit rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border ${item.status !== 'proses' ? 'lg:col-span-3' : 'lg:col-span-2'}`}
+                    >
                         <div className="border-b px-6 py-4">
                             <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                 Histori Progress
@@ -567,10 +579,12 @@ export default function ProduksiShow({
                                         <TableRow key={d.id}>
                                             <TableCell>
                                                 <div className="font-medium">
-                                                    {d.produk?.nama_produk ?? '-'}
+                                                    {d.produk?.nama_produk ??
+                                                        '-'}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
-                                                    {d.produk?.kode_produk ?? '-'}
+                                                    {d.produk?.kode_produk ??
+                                                        '-'}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right font-mono font-semibold">
@@ -579,16 +593,20 @@ export default function ProduksiShow({
                                             <TableCell>
                                                 {d.qc_status === 'lolos' ? (
                                                     <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400">
-                                                        <CheckCircle className="size-3" /> Lolos
+                                                        <CheckCircle className="size-3" />{' '}
+                                                        Lolos
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-400">
-                                                        <XCircle className="size-3" /> Tidak Lolos
+                                                        <XCircle className="size-3" />{' '}
+                                                        Tidak Lolos
                                                     </span>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-sm text-muted-foreground">
-                                                {new Date(d.created_at).toLocaleDateString('id-ID', {
+                                                {new Date(
+                                                    d.created_at,
+                                                ).toLocaleDateString('id-ID', {
                                                     day: 'numeric',
                                                     month: 'short',
                                                     year: 'numeric',
@@ -607,6 +625,19 @@ export default function ProduksiShow({
                         )}
                     </div>
                 </div>
+
+                <MaterialMovementPanel
+                    produksi={item}
+                    materialSummary={materialSummary}
+                    materialOptions={materialOptions}
+                />
+
+                <QcHistoryPanel
+                    produksi={item}
+                    activeRework={activeRework}
+                    qcSummary={qcSummary}
+                    wageBasis={wageBasis}
+                />
             </div>
         </>
     );

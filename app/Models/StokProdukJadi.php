@@ -21,6 +21,7 @@ class StokProdukJadi extends Model
      */
     protected $fillable = [
         'produk_id',
+        'detail_produksi_id',
         'pesanan_id',
         'jenis_transaksi',
         'qty',
@@ -36,7 +37,7 @@ class StokProdukJadi extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'qty'          => 'integer',
+        'qty' => 'integer',
         'stok_sebelum' => 'integer',
         'stok_sesudah' => 'integer',
     ];
@@ -47,6 +48,11 @@ class StokProdukJadi extends Model
     public function produk(): BelongsTo
     {
         return $this->belongsTo(Produk::class, 'produk_id');
+    }
+
+    public function detailProduksi(): BelongsTo
+    {
+        return $this->belongsTo(DetailProduksi::class, 'detail_produksi_id');
     }
 
     /**

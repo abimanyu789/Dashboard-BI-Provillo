@@ -15,12 +15,12 @@ class StockProdukService
      * Digunakan oleh: modul Produksi (tambah stok saat progres produksi selesai).
      * Dapat diperluas untuk: penyesuaian stok.
      *
-     * @param  Produk      $produk      Model produk yang stoknya akan ditambah.
-     * @param  int         $qty         Jumlah yang ditambahkan (harus > 0).
-     * @param  string      $jenis       Jenis transaksi: 'produksi' | 'penyesuaian'.
-     * @param  string|null $keterangan  Catatan opsional.
-     * @param  int|null    $createdBy   ID user yang melakukan transaksi (dari auth()->id()).
-     * @param  int|null    $pesananId   Hanya untuk jejak (biasanya null pada penambahan).
+     * @param  Produk  $produk  Model produk yang stoknya akan ditambah.
+     * @param  int  $qty  Jumlah yang ditambahkan (harus > 0).
+     * @param  string  $jenis  Jenis transaksi: 'produksi' | 'penyesuaian'.
+     * @param  string|null  $keterangan  Catatan opsional.
+     * @param  int|null  $createdBy  ID user yang melakukan transaksi (dari auth()->id()).
+     * @param  int|null  $pesananId  Hanya untuk jejak (biasanya null pada penambahan).
      */
     public function addStock(
         Produk $produk,
@@ -28,25 +28,49 @@ class StockProdukService
         string $jenis = 'produksi',
         ?string $keterangan = null,
         ?int $createdBy = null,
-        ?int $pesananId = null
+        ?int $pesananId = null,
+        ?int $detailProduksiId = null,
     ): StokProdukJadi {
-        return DB::transaction(function () use ($produk, $qty, $jenis, $keterangan, $createdBy, $pesananId) {
-            $stokSebelum = (int) $produk->stok;
+        if ($qty <= 0) {
+            throw new \InvalidArgumentException('Jumlah penambahan stok harus lebih dari nol.');
+        }
+
+        return DB::transaction(function () use (
+            $produk,
+            $qty,
+            $jenis,
+            $keterangan,
+            $createdBy,
+            $pesananId,
+            $detailProduksiId,
+        ) {
+            $lockedProduk = Produk::query()->lockForUpdate()->findOrFail($produk->id);
+
+            if ($detailProduksiId !== null) {
+                $existing = StokProdukJadi::query()
+                    ->where('detail_produksi_id', $detailProduksiId)
+                    ->first();
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
+
+            $stokSebelum = (int) $lockedProduk->stok;
             $stokSesudah = $stokSebelum + $qty;
 
-            // Update stok utama di tabel produk
-            $produk->increment('stok', $qty);
+            $lockedProduk->update(['stok' => $stokSesudah]);
 
-            // Catat riwayat di tabel stok_produk_jadi
             return StokProdukJadi::create([
-                'produk_id'       => $produk->id,
-                'pesanan_id'      => $pesananId,
+                'produk_id' => $lockedProduk->id,
+                'detail_produksi_id' => $detailProduksiId,
+                'pesanan_id' => $pesananId,
                 'jenis_transaksi' => $jenis,
-                'qty'             => $qty,
-                'stok_sebelum'    => $stokSebelum,
-                'stok_sesudah'    => $stokSesudah,
-                'keterangan'      => $keterangan,
-                'created_by'      => $createdBy,
+                'qty' => $qty,
+                'stok_sebelum' => $stokSebelum,
+                'stok_sesudah' => $stokSesudah,
+                'keterangan' => $keterangan,
+                'created_by' => $createdBy,
             ]);
         });
     }
@@ -57,14 +81,14 @@ class StockProdukService
      * Digunakan oleh: pengiriman manual (modul ini), dan rollback produksi.
      * Business rule: stok tidak boleh negatif (BR Stok Produk Jadi).
      *
-     * @param  Produk      $produk      Model produk yang stoknya akan dikurangi.
-     * @param  int         $qty         Jumlah yang dikurangi (harus > 0).
-     * @param  string      $jenis       Jenis transaksi: 'pengiriman' | 'rollback' | 'penyesuaian'.
-     * @param  string|null $keterangan  Catatan opsional.
-     * @param  int|null    $createdBy   ID user yang melakukan transaksi (dari auth()->id()).
-     * @param  int|null    $pesananId   Wajib diisi untuk pengiriman (BR-KIR-01).
+     * @param  Produk  $produk  Model produk yang stoknya akan dikurangi.
+     * @param  int  $qty  Jumlah yang dikurangi (harus > 0).
+     * @param  string  $jenis  Jenis transaksi: 'pengiriman' | 'rollback' | 'penyesuaian'.
+     * @param  string|null  $keterangan  Catatan opsional.
+     * @param  int|null  $createdBy  ID user yang melakukan transaksi (dari auth()->id()).
+     * @param  int|null  $pesananId  Wajib diisi untuk pengiriman (BR-KIR-01).
      *
-     * @throws \RuntimeException  Jika stok tidak mencukupi.
+     * @throws \RuntimeException Jika stok tidak mencukupi.
      */
     public function reduceStock(
         Produk $produk,
@@ -72,33 +96,35 @@ class StockProdukService
         string $jenis = 'pengiriman',
         ?string $keterangan = null,
         ?int $createdBy = null,
-        ?int $pesananId = null
+        ?int $pesananId = null,
     ): StokProdukJadi {
+        if ($qty <= 0) {
+            throw new \InvalidArgumentException('Jumlah pengurangan stok harus lebih dari nol.');
+        }
+
         return DB::transaction(function () use ($produk, $qty, $jenis, $keterangan, $createdBy, $pesananId) {
-            // Reload dengan fresh data untuk menghindari race condition
-            $produk->refresh();
-            $stokSebelum = (int) $produk->stok;
+            $lockedProduk = Produk::query()->lockForUpdate()->findOrFail($produk->id);
+            $stokSebelum = (int) $lockedProduk->stok;
 
             if ($stokSebelum < $qty) {
                 throw new \RuntimeException(
-                    "Stok {$produk->nama_produk} tidak mencukupi. ".
-                    "Tersedia: {$stokSebelum}, dibutuhkan: {$qty}."
+                    "Stok {$lockedProduk->nama_produk} tidak mencukupi. "
+                    ."Tersedia: {$stokSebelum}, dibutuhkan: {$qty}."
                 );
             }
 
             $stokSesudah = $stokSebelum - $qty;
-
-            $produk->decrement('stok', $qty);
+            $lockedProduk->update(['stok' => $stokSesudah]);
 
             return StokProdukJadi::create([
-                'produk_id'       => $produk->id,
-                'pesanan_id'      => $pesananId,
+                'produk_id' => $lockedProduk->id,
+                'pesanan_id' => $pesananId,
                 'jenis_transaksi' => $jenis,
-                'qty'             => $qty,
-                'stok_sebelum'    => $stokSebelum,
-                'stok_sesudah'    => $stokSesudah,
-                'keterangan'      => $keterangan,
-                'created_by'      => $createdBy,
+                'qty' => $qty,
+                'stok_sebelum' => $stokSebelum,
+                'stok_sesudah' => $stokSesudah,
+                'keterangan' => $keterangan,
+                'created_by' => $createdBy,
             ]);
         });
     }
@@ -165,15 +191,15 @@ class StockProdukService
             };
 
             $items[] = [
-                'produk_id'    => $detail->produk_id,
-                'kode_produk'  => $detail->produk?->kode_produk,
-                'nama_produk'  => $detail->produk?->nama_produk,
-                'stok'         => (int) ($detail->produk?->stok ?? 0),
-                'qty_pesan'    => $qtyPesan,
-                'qty_dikirim'  => $qtyDikirim,
-                'qty_sisa'     => $qtySisa,
-                'percent'      => $percent,
-                'status'       => $status,
+                'produk_id' => $detail->produk_id,
+                'kode_produk' => $detail->produk?->kode_produk,
+                'nama_produk' => $detail->produk?->nama_produk,
+                'stok' => (int) ($detail->produk?->stok ?? 0),
+                'qty_pesan' => $qtyPesan,
+                'qty_dikirim' => $qtyDikirim,
+                'qty_sisa' => $qtySisa,
+                'percent' => $percent,
+                'status' => $status,
             ];
 
             $qtyPesanTotal += $qtyPesan;
@@ -187,10 +213,10 @@ class StockProdukService
 
         return [
             'overall' => [
-                'qty_pesan'        => $qtyPesanTotal,
-                'qty_dikirim'      => $qtyDikirimTotal,
-                'qty_sisa'         => $qtySisaTotal,
-                'percent'          => $overallPercent,
+                'qty_pesan' => $qtyPesanTotal,
+                'qty_dikirim' => $qtyDikirimTotal,
+                'qty_sisa' => $qtySisaTotal,
+                'percent' => $overallPercent,
                 'is_fully_shipped' => $qtyPesanTotal > 0 && $qtySisaTotal === 0,
             ],
             'items' => $items,

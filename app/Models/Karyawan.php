@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Karyawan extends Model
@@ -17,7 +18,7 @@ class Karyawan extends Model
     /**
      * The attributes that are mass assignable.
      *
-     * @var array<int, string>
+     * @var list<string>
      */
     protected $fillable = [
         'nama_karyawan',
@@ -39,9 +40,19 @@ class Karyawan extends Model
 
     /**
      * Relasi ke tabel produksi via pivot produksi_karyawan.
+     *
+     * @return BelongsToMany<Produksi, $this>
      */
-    public function produksis(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function produksis(): BelongsToMany
     {
         return $this->belongsToMany(Produksi::class, 'produksi_karyawan', 'karyawan_id', 'produksi_id');
+    }
+
+    /**
+     * @return HasMany<DetailProduksi, $this>
+     */
+    public function productionProgress(): HasMany
+    {
+        return $this->hasMany(DetailProduksi::class, 'karyawan_id');
     }
 }

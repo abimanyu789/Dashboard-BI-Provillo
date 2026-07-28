@@ -4,19 +4,20 @@ namespace App\Services;
 
 use App\Models\BahanBaku;
 use App\Models\DetailProduksi;
+use App\Models\Pesanan;
 use App\Models\Produk;
 use App\Models\Produksi;
 use App\Models\ProduksiItem;
 use App\Models\ProduksiKaryawan;
-use App\Services\Inventory\StockBahanBakuService;
+use App\Models\StokProdukCacat;
 use App\Services\Inventory\StockProdukService;
 use Illuminate\Support\Facades\DB;
 
 class ProduksiService
 {
     public function __construct(
-        private readonly StockBahanBakuService $stockBahanBakuService,
-        private readonly StockProdukService $stockProdukService
+        private readonly StockProdukService $stockProdukService,
+        private readonly ProduksiMaterialService $materialService,
     ) {}
 
     // ─── Create ──────────────────────────────────────────────────────────────
@@ -32,8 +33,8 @@ class ProduksiService
      * - BR-01: Status awal = draft
      * - BR-15: Produksi pesanan — satu pesanan hanya boleh satu produksi aktif
      *
-     * @param  array $data  Validated data dari ProduksiRequest
-     * @param  int   $createdBy
+     * @param  array  $data  Validated data dari ProduksiRequest
+     *
      * @throws \RuntimeException
      */
     public function create(array $data, int $createdBy): Produksi
@@ -49,7 +50,7 @@ class ProduksiService
 
     private function createDariPesanan(array $data, int $createdBy): Produksi
     {
-        $pesanan = \App\Models\Pesanan::with('detailPesanan')->findOrFail($data['pesanan_id']);
+        $pesanan = Pesanan::with('detailPesanan')->findOrFail($data['pesanan_id']);
 
         // BR-15: Cek produksi aktif untuk pesanan ini
         if ($pesanan->produksi()->whereIn('status', ['draft', 'proses'])->exists()) {
@@ -62,23 +63,23 @@ class ProduksiService
             $qtyTarget = $pesanan->detailPesanan->sum('qty');
 
             $produksi = Produksi::create([
-                'pesanan_id'     => $pesanan->id,
-                'created_by'     => $createdBy,
+                'pesanan_id' => $pesanan->id,
+                'created_by' => $createdBy,
                 'jenis_produksi' => 'pesanan',
-                'deadline'       => $data['deadline'] ?? null,
-                'qty_target'     => $qtyTarget,
-                'qty_selesai'    => 0,
-                'status'         => 'draft',
-                'status_qc'      => 'belum_dicek',
-                'catatan'        => $data['catatan'] ?? null,
+                'deadline' => $data['deadline'] ?? null,
+                'qty_target' => $qtyTarget,
+                'qty_selesai' => 0,
+                'status' => 'draft',
+                'status_qc' => 'belum_dicek',
+                'catatan' => $data['catatan'] ?? null,
             ]);
 
             // Populate produksi_item dari detail_pesanan
             foreach ($pesanan->detailPesanan as $detail) {
                 ProduksiItem::create([
                     'produksi_id' => $produksi->id,
-                    'produk_id'   => $detail->produk_id,
-                    'qty_target'  => $detail->qty,
+                    'produk_id' => $detail->produk_id,
+                    'qty_target' => $detail->qty,
                 ]);
             }
 
@@ -91,28 +92,28 @@ class ProduksiService
 
     private function createRestok(array $data, int $createdBy): Produksi
     {
-        $items     = $data['items'] ?? [];
+        $items = $data['items'] ?? [];
         $qtyTarget = collect($items)->sum('qty_target');
 
         return DB::transaction(function () use ($data, $createdBy, $items, $qtyTarget) {
             $produksi = Produksi::create([
-                'pesanan_id'     => null,
-                'created_by'     => $createdBy,
+                'pesanan_id' => null,
+                'created_by' => $createdBy,
                 'jenis_produksi' => 'restok',
-                'deadline'       => $data['deadline'] ?? null,
-                'qty_target'     => $qtyTarget,
-                'qty_selesai'    => 0,
-                'status'         => 'draft',
-                'status_qc'      => 'belum_dicek',
-                'catatan'        => $data['catatan'] ?? null,
+                'deadline' => $data['deadline'] ?? null,
+                'qty_target' => $qtyTarget,
+                'qty_selesai' => 0,
+                'status' => 'draft',
+                'status_qc' => 'belum_dicek',
+                'catatan' => $data['catatan'] ?? null,
             ]);
 
             // Populate produksi_item dari input admin
             foreach ($items as $item) {
                 ProduksiItem::create([
                     'produksi_id' => $produksi->id,
-                    'produk_id'   => $item['produk_id'],
-                    'qty_target'  => $item['qty_target'],
+                    'produk_id' => $item['produk_id'],
+                    'qty_target' => $item['qty_target'],
                 ]);
             }
 
@@ -136,61 +137,44 @@ class ProduksiService
     // ─── Mulai & Batalkan ────────────────────────────────────────────────────
 
     /**
-     * Mulai produksi: potong stok bahan baku sesuai BOM, ubah status draft → proses.
-     *
-     * Business rules:
-     * - BR-04: Produksi hanya bisa mulai jika stok bahan mencukupi
-     * - BR-05: Saat proses, stok bahan baku otomatis berkurang
-     * - BR-06: Jika tidak cukup, status tetap draft
-     *
-     * @throws \RuntimeException
+     * Mulai produksi tanpa memotong seluruh kebutuhan BOM.
+     * Kebutuhan BOM disimpan sebagai planned movement; bahan dikeluarkan terpisah.
      */
     public function mulaiProduksi(Produksi $produksi, int $userId): Produksi
     {
-        if (!$produksi->isDraft()) {
+        if (! $produksi->isDraft()) {
             throw new \RuntimeException(
                 "Produksi hanya bisa dimulai dari status draft. Status saat ini: {$produksi->status}."
             );
         }
 
-        // Load produksi_item beserta BOM produk
         $produksi->loadMissing([
             'produksiItems.produk.bomCategorie.bomDetails.bahanBaku',
         ]);
 
-        if (!$this->cekKecukupanStok($produksi)) {
+        if (! $this->hasValidBom($produksi)) {
             throw new \RuntimeException(
-                'Produksi tidak dapat dimulai karena terdapat produk yang belum memiliki BOM atau stok bahan baku tidak mencukupi.'
+                'Produksi tidak dapat dimulai karena setiap produk wajib memiliki BOM yang valid dan berisi bahan baku.'
             );
         }
 
-        return DB::transaction(function () use ($produksi) {
-            $kebutuhan   = $this->hitungKebutuhanBahan($produksi);
-            $keterangan  = $this->labelProduksi($produksi);
+        return DB::transaction(function () use ($produksi, $userId) {
+            $lockedProduksi = Produksi::query()->lockForUpdate()->findOrFail($produksi->id);
 
-            foreach ($kebutuhan as $item) {
-                $bahanBaku = BahanBaku::lockForUpdate()->findOrFail($item['id']);
-                $this->stockBahanBakuService->reduceStock(
-                    bahanBaku:  $bahanBaku,
-                    qty:        $item['kebutuhan'],
-                    jenis:      'produksi',
-                    keterangan: "Produksi {$keterangan}",
-                );
+            if (! $lockedProduksi->isDraft()) {
+                throw new \RuntimeException('Produksi sudah dimulai atau tidak lagi berstatus Draft.');
             }
 
-            $produksi->update(['status' => 'proses']);
+            $requirements = $this->hitungKebutuhanBahan($produksi);
+            $this->materialService->recordPlannedRequirements($lockedProduksi, $requirements, $userId);
+            $lockedProduksi->update(['status' => 'proses']);
 
-            return $produksi->fresh();
-        });
+            return $lockedProduksi->fresh();
+        }, attempts: 3);
     }
 
     /**
-     * Batalkan produksi.
-     *
-     * draft  → dibatalkan (tanpa rollback stok, belum pernah potong)
-     * proses → dibatalkan (rollback stok bahan baku, BR-13)
-     *
-     * @throws \RuntimeException
+     * Batalkan produksi dan kembalikan hanya bahan terbit yang belum digunakan.
      */
     public function batalkanProduksi(Produksi $produksi, int $userId): Produksi
     {
@@ -200,120 +184,216 @@ class ProduksiService
             );
         }
 
-        return DB::transaction(function () use ($produksi) {
-            if ($produksi->isProses()) {
-                $produksi->loadMissing([
-                    'produksiItems.produk.bomCategorie.bomDetails.bahanBaku',
-                ]);
+        return DB::transaction(function () use ($produksi, $userId) {
+            $lockedProduksi = Produksi::query()->lockForUpdate()->findOrFail($produksi->id);
 
-                $kebutuhan  = $this->hitungKebutuhanBahan($produksi);
-                $keterangan = $this->labelProduksi($produksi);
-
-                foreach ($kebutuhan as $item) {
-                    $bahanBaku = BahanBaku::lockForUpdate()->findOrFail($item['id']);
-                    $this->stockBahanBakuService->addStock(
-                        bahanBaku:  $bahanBaku,
-                        qty:        $item['kebutuhan'],
-                        jenis:      'rollback',
-                        keterangan: "Rollback Produksi {$keterangan}",
-                    );
-                }
+            if ($lockedProduksi->isProses()) {
+                $this->materialService->returnUnusedOnCancellation($lockedProduksi, $userId);
             }
 
-            $produksi->update(['status' => 'dibatalkan']);
+            $lockedProduksi->update(['status' => 'dibatalkan']);
 
-            return $produksi->fresh();
-        });
+            return $lockedProduksi->fresh();
+        }, attempts: 3);
     }
 
     // ─── Progress & Selesai ──────────────────────────────────────────────────
 
     /**
-     * Input progress produksi per produk.
-     * Admin memilih produk, qty, dan qc_status.
-     * Karyawan tidak dipilih saat progress — sudah ditentukan saat create.
-     *
-     * Business rules:
-     * - BR-09: Progress + qc_status disimpan di detail_produksi
-     * - BR-10: Lolos QC → tambah stok produk jadi via StockProdukService
-     * - BR-11: Tidak lolos → detail tetap disimpan, stok tidak bertambah
-     * - BR-12: Dropdown produk hanya tampil jika qty lolos < qty_target per produk
-     *
-     * @throws \RuntimeException
+     * @param  array{
+     *     produk_id: int,
+     *     karyawan_id: int,
+     *     qty: int,
+     *     qc_status: 'lolos'|'tidak_lolos',
+     *     alasan_qc?: string|null,
+     *     disposisi_qc?: 'rework'|'jual_cacat'|'dimusnahkan'|null,
+     *     rework_parent_id?: int|null,
+     *     catatan?: string|null,
+     *     idempotency_key: string
+     * }  $data
      */
-    public function inputProgress(
-        Produksi $produksi,
-        int $produkId,
-        int $qty,
-        string $qcStatus,
-        int $userId
-    ): DetailProduksi {
-        if (!$produksi->isProses()) {
-            throw new \RuntimeException('Progress hanya dapat diinput saat produksi berstatus Proses.');
-        }
+    public function inputProgress(Produksi $produksi, array $data, int $userId): DetailProduksi
+    {
+        return DB::transaction(function () use ($produksi, $data, $userId) {
+            $existing = DetailProduksi::query()
+                ->where('idempotency_key', $data['idempotency_key'])
+                ->first();
 
-        // Validasi produk ada di produksi_item
-        $produksi->loadMissing('produksiItems');
-        $produksiItem = $produksi->produksiItems->firstWhere('produk_id', $produkId);
-        if (!$produksiItem) {
-            throw new \RuntimeException('Produk yang dipilih tidak termasuk dalam produksi ini.');
-        }
+            if ($existing !== null) {
+                $matchesOriginal = (int) $existing->produksi_id === (int) $produksi->id
+                    && (int) $existing->produk_id === (int) $data['produk_id']
+                    && (int) ($existing->karyawan_id ?? 0) === (int) $data['karyawan_id']
+                    && (int) $existing->qty_selesai === (int) $data['qty']
+                    && $existing->qc_status === $data['qc_status'];
 
-        // Validasi per produk: qty lolos saat ini + qty baru tidak boleh melebihi target produk
-        if ($qcStatus === 'lolos') {
-            $qtyLolosPerProduk = DetailProduksi::where('produksi_id', $produksi->id)
-                ->where('produk_id', $produkId)
-                ->where('qc_status', 'lolos')
-                ->sum('qty_selesai');
+                if (! $matchesOriginal) {
+                    throw new \RuntimeException('Kunci idempotensi sudah digunakan untuk progress yang berbeda.');
+                }
 
-            if ($qtyLolosPerProduk + $qty > $produksiItem->qty_target) {
-                throw new \RuntimeException(
-                    "Jumlah progress ({$qty}) akan melebihi target produk ini. " .
-                    "Sisa target: " . ($produksiItem->qty_target - $qtyLolosPerProduk) . " pcs."
-                );
-            }
-        }
-
-        return DB::transaction(function () use ($produksi, $produkId, $qty, $qcStatus, $userId) {
-            $produk     = Produk::findOrFail($produkId);
-            $keterangan = $this->labelProduksi($produksi);
-
-            // Simpan histori progress — selalu disimpan terlepas dari QC
-            $detail = DetailProduksi::create([
-                'produksi_id' => $produksi->id,
-                'produk_id'   => $produkId,
-                'qty_selesai' => $qty,
-                'qc_status'   => $qcStatus,
-            ]);
-
-            if ($qcStatus === 'lolos') {
-                // BR-10: Tambah stok produk jadi
-                $this->stockProdukService->addStock(
-                    produk:     $produk,
-                    qty:        $qty,
-                    jenis:      'produksi',
-                    keterangan: "Progress Produksi {$keterangan} — {$produk->nama_produk}",
-                    createdBy:  $userId,
-                );
+                return $existing;
             }
 
-            // Recalculate qty_selesai dari SUM lolos agar konsisten
-            $qtySelesaiBaru = DetailProduksi::where('produksi_id', $produksi->id)
-                ->where('qc_status', 'lolos')
-                ->sum('qty_selesai');
+            $lockedProduksi = Produksi::query()->lockForUpdate()->findOrFail($produksi->id);
 
-            // Calculate overall QC status
-            $adaTidakLolos = DetailProduksi::where('produksi_id', $produksi->id)
-                ->where('qc_status', 'tidak_lolos')
+            if (! $lockedProduksi->isProses()) {
+                throw new \RuntimeException('Progress hanya dapat diinput saat produksi berstatus Proses.');
+            }
+
+            $produksiItem = ProduksiItem::query()
+                ->where('produksi_id', $lockedProduksi->id)
+                ->where('produk_id', $data['produk_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if ($produksiItem === null) {
+                throw new \RuntimeException('Produk yang dipilih tidak termasuk dalam produksi ini.');
+            }
+
+            $workerAssigned = ProduksiKaryawan::query()
+                ->where('produksi_id', $lockedProduksi->id)
+                ->where('karyawan_id', $data['karyawan_id'])
                 ->exists();
 
-            $produksi->update([
-                'qty_selesai' => (int) $qtySelesaiBaru,
-                'status_qc'   => $adaTidakLolos ? 'tidak_lolos' : 'lolos',
+            if (! $workerAssigned) {
+                throw new \RuntimeException('Karyawan yang dipilih tidak termasuk dalam tim produksi ini.');
+            }
+
+            if (
+                $data['qc_status'] === 'tidak_lolos'
+                && (blank($data['alasan_qc'] ?? null) || blank($data['disposisi_qc'] ?? null))
+            ) {
+                throw new \RuntimeException('Progress tidak lolos QC wajib memiliki alasan dan disposisi.');
+            }
+
+            $reworkParent = $this->validateReworkParent($lockedProduksi, $data);
+
+            if ($data['qc_status'] === 'lolos' && $reworkParent === null) {
+                $qtyLolos = (int) DetailProduksi::query()
+                    ->where('produksi_id', $lockedProduksi->id)
+                    ->where('produk_id', $data['produk_id'])
+                    ->where('qc_status', 'lolos')
+                    ->sum('qty_selesai');
+
+                if ($qtyLolos + $data['qty'] > $produksiItem->qty_target) {
+                    throw new \RuntimeException(
+                        "Jumlah progress ({$data['qty']}) akan melebihi target produk ini. "
+                        .'Sisa target: '.($produksiItem->qty_target - $qtyLolos).' pcs.'
+                    );
+                }
+            }
+
+            $detail = DetailProduksi::query()->create([
+                'produksi_id' => $lockedProduksi->id,
+                'produk_id' => $data['produk_id'],
+                'karyawan_id' => $data['karyawan_id'],
+                'qty_selesai' => $data['qty'],
+                'qc_status' => $data['qc_status'],
+                'alasan_qc' => $data['qc_status'] === 'tidak_lolos' ? ($data['alasan_qc'] ?? null) : null,
+                'disposisi_qc' => $data['qc_status'] === 'tidak_lolos' ? ($data['disposisi_qc'] ?? null) : null,
+                'rework_parent_id' => $reworkParent?->id,
+                'catatan' => $data['catatan'] ?? null,
+                'inspected_by' => $userId,
+                'inspected_at' => now(),
+                'idempotency_key' => $data['idempotency_key'],
             ]);
 
-            return $detail;
-        });
+            $produk = Produk::query()->lockForUpdate()->findOrFail($data['produk_id']);
+            $keterangan = $this->labelProduksi($lockedProduksi);
+
+            if ($detail->qc_status === 'lolos') {
+                $this->stockProdukService->addStock(
+                    produk: $produk,
+                    qty: (int) $detail->qty_selesai,
+                    jenis: 'produksi',
+                    keterangan: "Progress Produksi {$keterangan} — {$produk->nama_produk}",
+                    createdBy: $userId,
+                    detailProduksiId: $detail->id,
+                );
+            } elseif (in_array($detail->disposisi_qc, ['jual_cacat', 'dimusnahkan'], true)) {
+                StokProdukCacat::query()->firstOrCreate(
+                    ['detail_produksi_id' => $detail->id],
+                    [
+                        'produksi_id' => $detail->produksi_id,
+                        'produk_id' => $detail->produk_id,
+                        'disposisi' => $detail->disposisi_qc,
+                        'qty' => $detail->qty_selesai,
+                        'alasan_qc' => $detail->alasan_qc,
+                        'catatan' => $detail->catatan,
+                        'created_by' => $userId,
+                    ],
+                );
+            }
+
+            $this->recalculateProgress($lockedProduksi);
+
+            return $detail->load([
+                'produk',
+                'karyawan',
+                'inspector',
+                'reworkParent',
+                'stokHistory',
+                'defectLedger',
+            ]);
+        }, attempts: 3);
+    }
+
+    /**
+     * @param  array{alasan_qc: string, disposisi_qc: string, catatan?: string|null}  $data
+     */
+    public function updateQcDisposition(
+        Produksi $produksi,
+        DetailProduksi $detail,
+        array $data,
+        int $userId,
+    ): DetailProduksi {
+        return DB::transaction(function () use ($produksi, $detail, $data, $userId) {
+            $lockedDetail = DetailProduksi::query()->lockForUpdate()->findOrFail($detail->id);
+
+            if ((int) $lockedDetail->produksi_id !== (int) $produksi->id) {
+                throw new \RuntimeException('Progress QC tidak termasuk dalam produksi ini.');
+            }
+
+            if ($lockedDetail->qc_status !== 'tidak_lolos') {
+                throw new \RuntimeException('Disposisi hanya dapat diperbarui untuk progress yang tidak lolos QC.');
+            }
+
+            if ($lockedDetail->disposisi_qc !== null && $lockedDetail->disposisi_qc !== $data['disposisi_qc']) {
+                throw new \RuntimeException('Disposisi QC yang sudah diproses tidak dapat diganti.');
+            }
+
+            $lockedDetail->update([
+                'alasan_qc' => $data['alasan_qc'],
+                'disposisi_qc' => $data['disposisi_qc'],
+                'catatan' => $data['catatan'] ?? $lockedDetail->catatan,
+                'inspected_by' => $lockedDetail->inspected_by ?? $userId,
+                'inspected_at' => $lockedDetail->inspected_at ?? now(),
+            ]);
+
+            if (in_array($lockedDetail->disposisi_qc, ['jual_cacat', 'dimusnahkan'], true)) {
+                StokProdukCacat::query()->firstOrCreate(
+                    ['detail_produksi_id' => $lockedDetail->id],
+                    [
+                        'produksi_id' => $lockedDetail->produksi_id,
+                        'produk_id' => $lockedDetail->produk_id,
+                        'disposisi' => $lockedDetail->disposisi_qc,
+                        'qty' => $lockedDetail->qty_selesai,
+                        'alasan_qc' => $lockedDetail->alasan_qc,
+                        'catatan' => $lockedDetail->catatan,
+                        'created_by' => $userId,
+                    ],
+                );
+            }
+
+            $this->recalculateProgress($produksi);
+
+            return $lockedDetail->fresh([
+                'produk',
+                'karyawan',
+                'inspector',
+                'reworkResults',
+                'defectLedger',
+            ]);
+        }, attempts: 3);
     }
 
     /**
@@ -326,19 +406,49 @@ class ProduksiService
      */
     public function selesaikanProduksi(Produksi $produksi): Produksi
     {
-        if (!$produksi->isProses()) {
+        if (! $produksi->isProses()) {
             throw new \RuntimeException('Produksi hanya dapat diselesaikan dari status Proses.');
         }
 
-        if ($produksi->qty_selesai < $produksi->qty_target) {
-            throw new \RuntimeException(
-                "Produksi belum dapat diselesaikan. Progress saat ini: {$produksi->qty_selesai} / {$produksi->qty_target} pcs."
-            );
-        }
+        return DB::transaction(function () use ($produksi) {
+            $lockedProduksi = Produksi::query()->lockForUpdate()->findOrFail($produksi->id);
+            $this->recalculateProgress($lockedProduksi);
+            $lockedProduksi->refresh();
 
-        $produksi->update(['status' => 'selesai']);
+            if ($lockedProduksi->qty_selesai < $lockedProduksi->qty_target) {
+                throw new \RuntimeException(
+                    'Produksi belum dapat diselesaikan. Progress saat ini: '
+                    ."{$lockedProduksi->qty_selesai} / {$lockedProduksi->qty_target} pcs."
+                );
+            }
 
-        return $produksi->fresh();
+            $failedWithoutDisposition = DetailProduksi::query()
+                ->where('produksi_id', $lockedProduksi->id)
+                ->where('qc_status', 'tidak_lolos')
+                ->whereNull('disposisi_qc')
+                ->exists();
+
+            if ($failedWithoutDisposition) {
+                throw new \RuntimeException('Produksi belum dapat diselesaikan karena ada kegagalan QC tanpa disposisi.');
+            }
+
+            if ($this->activeReworkQuantity($lockedProduksi) > 0) {
+                throw new \RuntimeException('Produksi belum dapat diselesaikan karena masih ada rework aktif.');
+            }
+
+            $this->materialService->assertConsistent($lockedProduksi);
+
+            $negativeStockExists = BahanBaku::query()->where('stok', '<', 0)->exists()
+                || Produk::query()->where('stok', '<', 0)->exists();
+
+            if ($negativeStockExists) {
+                throw new \RuntimeException('Produksi belum dapat diselesaikan karena ditemukan kondisi stok tidak valid.');
+            }
+
+            $lockedProduksi->update(['status' => 'selesai']);
+
+            return $lockedProduksi->fresh();
+        }, attempts: 3);
     }
 
     // ─── Kalkulasi ───────────────────────────────────────────────────────────
@@ -348,6 +458,16 @@ class ProduksiService
      * Berlaku untuk Produksi Pesanan maupun Produksi Restok.
      *
      * BR-03: Kebutuhan dihitung dari BOM seluruh produk pada produksi_item.
+     *
+     * @return list<array{
+     *     id: int,
+     *     kode_bahan: string,
+     *     nama_bahan: string,
+     *     satuan: string,
+     *     kebutuhan: float,
+     *     stok_tersedia: float,
+     *     cukup: bool
+     * }>
      */
     public function hitungKebutuhanBahan(Produksi $produksi): array
     {
@@ -360,7 +480,7 @@ class ProduksiService
         foreach ($produksi->produksiItems as $item) {
             $produk = $item->produk;
 
-            if (!$produk || !$produk->bomCategorie) {
+            if (! $produk || ! $produk->bomCategorie) {
                 continue;
             }
 
@@ -368,24 +488,24 @@ class ProduksiService
 
             foreach ($produk->bomCategorie->bomDetails as $bomDetail) {
                 $bahanBaku = $bomDetail->bahanBaku;
-                if (!$bahanBaku) {
+                if (! $bahanBaku) {
                     continue;
                 }
 
-                $id           = $bahanBaku->id;
+                $id = $bahanBaku->id;
                 $kebutuhanQty = (float) $bomDetail->qty_per_pair * $qtyProduk;
 
                 if (isset($kebutuhan[$id])) {
                     $kebutuhan[$id]['kebutuhan'] += $kebutuhanQty;
                 } else {
                     $kebutuhan[$id] = [
-                        'id'            => $id,
-                        'kode_bahan'    => $bahanBaku->kode_bahan,
-                        'nama_bahan'    => $bahanBaku->nama_bahan,
-                        'satuan'        => $bahanBaku->satuan ?? '',
-                        'kebutuhan'     => $kebutuhanQty,
+                        'id' => $id,
+                        'kode_bahan' => $bahanBaku->kode_bahan,
+                        'nama_bahan' => $bahanBaku->nama_bahan,
+                        'satuan' => $bahanBaku->satuan ?? '',
+                        'kebutuhan' => $kebutuhanQty,
                         'stok_tersedia' => (float) $bahanBaku->stok,
-                        'cukup'         => true,
+                        'cukup' => true,
                     ];
                 }
             }
@@ -400,28 +520,31 @@ class ProduksiService
 
     public function cekKecukupanStok(Produksi $produksi): bool
     {
+        if (! $this->hasValidBom($produksi)) {
+            return false;
+        }
+
+        return collect($this->hitungKebutuhanBahan($produksi))
+            ->every(fn (array $bahan): bool => $bahan['cukup']);
+    }
+
+    public function hasValidBom(Produksi $produksi): bool
+    {
         $produksi->loadMissing([
             'produksiItems.produk.bomCategorie.bomDetails.bahanBaku',
         ]);
 
-        // BR-03: Semua produk harus punya BOM
-        foreach ($produksi->produksiItems as $item) {
-            if (!$item->produk || !$item->produk->bom_category_id || !$item->produk->bomCategorie) {
-                return false;
-            }
-        }
-
-        $kebutuhan = $this->hitungKebutuhanBahan($produksi);
-        
-        // Jika tidak ada kebutuhan bahan baku padahal ada produk yang diproduksi, 
-        // berarti BOM-nya kosong (tidak valid).
-        if (empty($kebutuhan) && $produksi->produksiItems->sum('qty_target') > 0) {
+        if ($produksi->produksiItems->isEmpty()) {
             return false;
         }
 
-        // BR-04: Semua stok harus mencukupi
-        foreach ($kebutuhan as $bahan) {
-            if (!$bahan['cukup']) {
+        foreach ($produksi->produksiItems as $item) {
+            if (
+                ! $item->produk
+                || ! $item->produk->bom_category_id
+                || ! $item->produk->bomCategorie
+                || $item->produk->bomCategorie->bomDetails->isEmpty()
+            ) {
                 return false;
             }
         }
@@ -451,10 +574,10 @@ class ProduksiService
                 ->sum('qty_selesai');
 
             $result[$item->produk_id] = [
-                'lolos'       => (int) $lolos,
+                'lolos' => (int) $lolos,
                 'tidak_lolos' => (int) $tidakLolos,
-                'target'      => $item->qty_target,
-                'selesai'     => $lolos >= $item->qty_target,
+                'target' => $item->qty_target,
+                'selesai' => $lolos >= $item->qty_target,
             ];
         }
 
@@ -471,7 +594,7 @@ class ProduksiService
     {
         $today = now()->toDateString();
 
-        $batchHariIni      = Produksi::whereDate('created_at', $today)->count();
+        $batchHariIni = Produksi::whereDate('created_at', $today)->count();
         $qtySelesaiHariIni = DetailProduksi::whereDate('created_at', $today)
             ->where('qc_status', 'lolos')
             ->sum('qty_selesai');
@@ -481,82 +604,169 @@ class ProduksiService
         // yang terlibat pada produksi yang punya progress lolos QC
         $karyawanData = $this->hitungKaryawanProduktif();
 
-        $qtyTargetAktif  = Produksi::where('status', 'proses')->sum('qty_target');
+        $qtyTargetAktif = Produksi::where('status', 'proses')->sum('qty_target');
         $qtySelesaiAktif = Produksi::where('status', 'proses')->sum('qty_selesai');
-        $efisiensi       = $qtyTargetAktif > 0
+        $efisiensi = $qtyTargetAktif > 0
             ? round(($qtySelesaiAktif / $qtyTargetAktif) * 100)
             : 0;
 
         return [
-            'batch_hari_ini'       => $batchHariIni,
+            'batch_hari_ini' => $batchHariIni,
             'qty_selesai_hari_ini' => (int) $qtySelesaiHariIni,
-            'karyawan_produktif'   => $karyawanData,
-            'efisiensi'            => [
+            'karyawan_produktif' => $karyawanData,
+            'efisiensi' => [
                 'qty_selesai' => (int) $qtySelesaiAktif,
-                'qty_target'  => (int) $qtyTargetAktif,
-                'persentase'  => $efisiensi,
+                'qty_target' => (int) $qtyTargetAktif,
+                'persentase' => $efisiensi,
             ],
         ];
     }
 
+    /**
+     * @return array{nama: string, total_qty: int, kontribusi: int|float}|null
+     */
     private function hitungKaryawanProduktif(): ?array
     {
-        // Hitung total qty lolos per produksi (30 hari), lalu ambil karyawan yang terlibat
-        $produksiAktif = Produksi::where('created_at', '>=', now()->subDays(30))
-            ->whereIn('status', ['proses', 'selesai'])
-            ->with('produksiKaryawans.karyawan')
-            ->get();
+        $top = DB::table('detail_produksi')
+            ->join('karyawan', 'detail_produksi.karyawan_id', '=', 'karyawan.id')
+            ->whereNotNull('detail_produksi.karyawan_id')
+            ->where('detail_produksi.qc_status', 'lolos')
+            ->where('detail_produksi.created_at', '>=', now()->subDays(30))
+            ->selectRaw(
+                'karyawan.id, karyawan.nama_karyawan, SUM(detail_produksi.qty_selesai) as total_qty'
+            )
+            ->groupBy('karyawan.id', 'karyawan.nama_karyawan')
+            ->orderByDesc('total_qty')
+            ->first();
 
-        if ($produksiAktif->isEmpty()) {
+        if ($top === null) {
             return null;
         }
 
-        // Hitung kontribusi qty per karyawan berdasarkan qty_selesai produksi yang mereka ikuti
-        $qtyPerKaryawan = [];
-
-        foreach ($produksiAktif as $produksi) {
-            $qtyLolos = DetailProduksi::where('produksi_id', $produksi->id)
-                ->where('qc_status', 'lolos')
-                ->sum('qty_selesai');
-
-            if ($qtyLolos <= 0) {
-                continue;
-            }
-
-            $jumlahKaryawan = $produksi->produksiKaryawans->count();
-            if ($jumlahKaryawan === 0) {
-                continue;
-            }
-
-            $kontribusiPerKaryawan = $qtyLolos / $jumlahKaryawan;
-
-            foreach ($produksi->produksiKaryawans as $pk) {
-                $id   = $pk->karyawan_id;
-                $nama = $pk->karyawan?->nama_karyawan ?? '-';
-
-                if (!isset($qtyPerKaryawan[$id])) {
-                    $qtyPerKaryawan[$id] = ['nama' => $nama, 'total' => 0];
-                }
-                $qtyPerKaryawan[$id]['total'] += $kontribusiPerKaryawan;
-            }
-        }
-
-        if (empty($qtyPerKaryawan)) {
-            return null;
-        }
-
-        arsort($qtyPerKaryawan);
-        $top   = reset($qtyPerKaryawan);
-        $total = array_sum(array_column($qtyPerKaryawan, 'total'));
+        $total = (int) DetailProduksi::query()
+            ->whereNotNull('karyawan_id')
+            ->where('qc_status', 'lolos')
+            ->where('created_at', '>=', now()->subDays(30))
+            ->sum('qty_selesai');
 
         return [
-            'nama'       => $top['nama'],
-            'total_qty'  => (int) round($top['total']),
-            'kontribusi' => $total > 0 ? round(($top['total'] / $total) * 100) : 0,
+            'nama' => $top->nama_karyawan,
+            'total_qty' => (int) $top->total_qty,
+            'kontribusi' => $total > 0 ? round(((int) $top->total_qty / $total) * 100) : 0,
         ];
     }
 
+    /**
+     * @return list<array{karyawan_id: int, nama: string, qty_lolos: int}>
+     */
+    public function wageBasis(Produksi $produksi): array
+    {
+        return array_values(DB::table('detail_produksi')
+            ->join('karyawan', 'detail_produksi.karyawan_id', '=', 'karyawan.id')
+            ->where('detail_produksi.produksi_id', $produksi->id)
+            ->whereNotNull('detail_produksi.karyawan_id')
+            ->where('detail_produksi.qc_status', 'lolos')
+            ->selectRaw(
+                'karyawan.id as karyawan_id, karyawan.nama_karyawan as nama, '
+                .'SUM(detail_produksi.qty_selesai) as qty_lolos'
+            )
+            ->groupBy('karyawan.id', 'karyawan.nama_karyawan')
+            ->orderByDesc('qty_lolos')
+            ->get()
+            ->map(fn (object $row): array => [
+                'karyawan_id' => (int) $row->karyawan_id,
+                'nama' => (string) $row->nama,
+                'qty_lolos' => (int) $row->qty_lolos,
+            ])
+            ->all());
+    }
+
     // ─── Helper ──────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array{
+     *     produk_id: int,
+     *     karyawan_id: int,
+     *     qty: int,
+     *     qc_status: 'lolos'|'tidak_lolos',
+     *     alasan_qc?: string|null,
+     *     disposisi_qc?: 'rework'|'jual_cacat'|'dimusnahkan'|null,
+     *     rework_parent_id?: int|null,
+     *     catatan?: string|null,
+     *     idempotency_key: string
+     * }  $data
+     */
+    private function validateReworkParent(Produksi $produksi, array $data): ?DetailProduksi
+    {
+        $parentId = $data['rework_parent_id'] ?? null;
+
+        if ($parentId === null) {
+            return null;
+        }
+
+        $parent = DetailProduksi::query()->lockForUpdate()->find($parentId);
+
+        if (! $parent instanceof DetailProduksi) {
+            throw new \RuntimeException('Data asal rework tidak ditemukan.');
+        }
+
+        if (
+            (int) $parent->produksi_id !== (int) $produksi->id
+            || (int) $parent->produk_id !== (int) $data['produk_id']
+            || $parent->qc_status !== 'tidak_lolos'
+            || $parent->disposisi_qc !== 'rework'
+        ) {
+            throw new \RuntimeException('Data asal rework tidak valid untuk produksi dan produk yang dipilih.');
+        }
+
+        $processed = (int) DetailProduksi::query()
+            ->where('rework_parent_id', $parent->id)
+            ->sum('qty_selesai');
+
+        if ($processed + (int) $data['qty'] > (int) $parent->qty_selesai) {
+            throw new \RuntimeException(
+                'Jumlah hasil rework melebihi sisa rework aktif. Sisa: '
+                .max(0, (int) $parent->qty_selesai - $processed).' pcs.'
+            );
+        }
+
+        return $parent;
+    }
+
+    private function activeReworkQuantity(Produksi $produksi): int
+    {
+        $parents = DetailProduksi::query()
+            ->where('produksi_id', $produksi->id)
+            ->where('qc_status', 'tidak_lolos')
+            ->where('disposisi_qc', 'rework')
+            ->withSum('reworkResults as processed_rework_qty', 'qty_selesai')
+            ->get();
+
+        return $parents->sum(
+            fn (DetailProduksi $detail): int => max(
+                0,
+                (int) $detail->qty_selesai - (int) ($detail->processed_rework_qty ?? 0),
+            )
+        );
+    }
+
+    private function recalculateProgress(Produksi $produksi): void
+    {
+        $qtySelesai = (int) DetailProduksi::query()
+            ->where('produksi_id', $produksi->id)
+            ->where('qc_status', 'lolos')
+            ->sum('qty_selesai');
+
+        $adaTidakLolos = DetailProduksi::query()
+            ->where('produksi_id', $produksi->id)
+            ->where('qc_status', 'tidak_lolos')
+            ->exists();
+
+        $produksi->update([
+            'qty_selesai' => $qtySelesai,
+            'status_qc' => $adaTidakLolos ? 'tidak_lolos' : ($qtySelesai > 0 ? 'lolos' : 'belum_dicek'),
+        ]);
+    }
 
     private function labelProduksi(Produksi $produksi): string
     {

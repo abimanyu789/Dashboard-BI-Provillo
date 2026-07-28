@@ -20,8 +20,11 @@ interface ProduksiActionDialogProps {
     stokCukup: boolean;
 }
 
-export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActionDialogProps) {
-    const [loadingMulai, setLoadingMulai]       = useState(false);
+export function ProduksiActionDialog({
+    produksi: item,
+    stokCukup,
+}: ProduksiActionDialogProps) {
+    const [loadingMulai, setLoadingMulai] = useState(false);
     const [loadingBatalkan, setLoadingBatalkan] = useState(false);
 
     const handleMulai = () => {
@@ -48,13 +51,13 @@ export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActi
         );
     };
 
-    const isDraft  = item.status === 'draft';
+    const isDraft = item.status === 'draft';
     const isProses = item.status === 'proses';
 
     return (
         <div className="flex items-center gap-2">
-            {/* Tombol Mulai Produksi — hanya saat draft dan stok cukup */}
-            {isDraft && stokCukup && (
+            {/* Produksi dapat dimulai meski stok rencana belum seluruhnya tersedia. */}
+            {isDraft && (
                 <Dialog>
                     <DialogTrigger asChild>
                         <Button variant="default">
@@ -66,10 +69,23 @@ export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActi
                         <DialogHeader>
                             <DialogTitle>Mulai Produksi</DialogTitle>
                             <DialogDescription>
-                                Produksi akan dimulai dan stok bahan baku akan dikurangi
-                                sesuai kebutuhan BOM. Tindakan ini tidak dapat dibatalkan
-                                tanpa rollback stok.
-                                <br /><br />
+                                Kebutuhan BOM akan dicatat sebagai rencana. Stok
+                                bahan baku belum berkurang sampai bahan
+                                diterbitkan untuk produksi.
+                                {!stokCukup && (
+                                    <>
+                                        <br />
+                                        <br />
+                                        <strong>
+                                            Stok saat ini belum memenuhi seluruh
+                                            rencana, tetapi produksi tetap dapat
+                                            dimulai dan kekurangan akan
+                                            ditampilkan.
+                                        </strong>
+                                    </>
+                                )}
+                                <br />
+                                <br />
                                 Lanjutkan?
                             </DialogDescription>
                         </DialogHeader>
@@ -82,26 +98,23 @@ export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActi
                                 disabled={loadingMulai}
                             >
                                 <Play className="mr-2 size-4" />
-                                {loadingMulai ? 'Memproses...' : 'Ya, Mulai Produksi'}
+                                {loadingMulai
+                                    ? 'Memproses...'
+                                    : 'Ya, Mulai Produksi'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
             )}
 
-            {/* Tombol Mulai Produksi — disable jika stok tidak cukup */}
-            {isDraft && !stokCukup && (
-                <Button variant="default" disabled title="Stok bahan baku tidak mencukupi">
-                    <Play className="mr-2 size-4" />
-                    Mulai Produksi
-                </Button>
-            )}
-
             {/* Tombol Batalkan Produksi — saat draft atau proses */}
             {(isDraft || isProses) && (
                 <Dialog>
                     <DialogTrigger asChild>
-                        <Button variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                        <Button
+                            variant="outline"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
                             <XCircle className="mr-2 size-4" />
                             Batalkan Produksi
                         </Button>
@@ -115,16 +128,20 @@ export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActi
                             <DialogDescription>
                                 {isProses ? (
                                     <>
-                                        Produksi sedang berjalan. Membatalkan akan
-                                        <strong> mengembalikan seluruh stok bahan baku</strong> yang
-                                        sudah dipotong ke kondisi semula.
-                                        <br /><br />
+                                        Produksi sedang berjalan. Hanya bahan
+                                        yang sudah diterbitkan tetapi belum
+                                        digunakan dan belum dikembalikan yang
+                                        akan masuk kembali ke gudang. Bahan yang
+                                        sudah digunakan tidak dikembalikan.
+                                        <br />
+                                        <br />
                                         Tindakan ini tidak dapat dibatalkan.
                                     </>
                                 ) : (
                                     <>
-                                        Produksi belum dimulai. Membatalkan akan mengubah
-                                        status menjadi <strong>Dibatalkan</strong> tanpa
+                                        Produksi belum dimulai. Membatalkan akan
+                                        mengubah status menjadi{' '}
+                                        <strong>Dibatalkan</strong> tanpa
                                         perubahan stok.
                                     </>
                                 )}
@@ -140,7 +157,9 @@ export function ProduksiActionDialog({ produksi: item, stokCukup }: ProduksiActi
                                 disabled={loadingBatalkan}
                             >
                                 <XCircle className="mr-2 size-4" />
-                                {loadingBatalkan ? 'Memproses...' : 'Ya, Batalkan Produksi'}
+                                {loadingBatalkan
+                                    ? 'Memproses...'
+                                    : 'Ya, Batalkan Produksi'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

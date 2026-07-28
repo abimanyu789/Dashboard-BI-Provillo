@@ -23,17 +23,32 @@ class Produksi extends Model
     ];
 
     protected $casts = [
-        'deadline'    => 'date',
-        'qty_target'  => 'integer',
+        'deadline' => 'date',
+        'qty_target' => 'integer',
         'qty_selesai' => 'integer',
     ];
 
     // ─── Status helpers ──────────────────────────────────────────────────────
 
-    public function isDraft(): bool       { return $this->status === 'draft'; }
-    public function isProses(): bool      { return $this->status === 'proses'; }
-    public function isSelesai(): bool     { return $this->status === 'selesai'; }
-    public function isDibatalkan(): bool  { return $this->status === 'dibatalkan'; }
+    public function isDraft(): bool
+    {
+        return $this->status === 'draft';
+    }
+
+    public function isProses(): bool
+    {
+        return $this->status === 'proses';
+    }
+
+    public function isSelesai(): bool
+    {
+        return $this->status === 'selesai';
+    }
+
+    public function isDibatalkan(): bool
+    {
+        return $this->status === 'dibatalkan';
+    }
 
     /** Produksi aktif = masih draft atau proses */
     public function isAktif(): bool
@@ -72,5 +87,15 @@ class Produksi extends Model
     public function produksiKaryawans(): HasMany
     {
         return $this->hasMany(ProduksiKaryawan::class, 'produksi_id');
+    }
+
+    public function materialMovements(): HasMany
+    {
+        return $this->hasMany(ProduksiPemakaianBahan::class, 'produksi_id');
+    }
+
+    public function defectLedgers(): HasMany
+    {
+        return $this->hasMany(StokProdukCacat::class, 'produksi_id');
     }
 }

@@ -61,9 +61,11 @@ instruksi eksplisit dari pemilik project.
 ## Stok Bahan Baku (KF-11, KF-16)
 - BR-01 Stok tidak boleh negatif.
 - BR-02 Penambahan stok lewat proses restock manual oleh admin.
-- BR-03 Pengurangan stok otomatis saat produksi dimulai (sesuai perhitungan BOM).
-- BR-04 Produksi dibatalkan → stok bahan baku dikembalikan otomatis.
-- BR-05 Setiap perubahan stok wajib tercatat di riwayat (tabel stok_bahan_baku).
+- BR-03 Kebutuhan BOM dicatat sebagai rencana saat produksi dimulai dan tidak mengubah stok.
+- BR-04 Stok bahan baku berkurang saat bahan diterbitkan (`issued`/`additional`) untuk produksi, bukan saat rencana BOM dibuat atau saat bahan ditandai `consumed`.
+- BR-05 Bahan `consumed` tidak dapat dikembalikan. Produksi dibatalkan hanya mengembalikan bahan terbit yang belum digunakan dan belum pernah dikembalikan.
+- BR-06 Setiap perubahan stok wajib tercatat di `stok_bahan_baku` dan terhubung ke ledger pemakaian bahan jika berasal dari produksi.
+- BR-07 Penyesuaian wajib memiliki alasan, dapat menambah/mengurangi stok, dan tidak boleh menyebabkan stok negatif.
 
 ## Stok Produk Jadi (KF-12, KF-16)
 - BR-01 Stok tidak boleh negatif.
@@ -80,21 +82,23 @@ instruksi eksplisit dari pemilik project.
 ## Produksi (KF-13, KF-14, KF-15, KF-16) — modul paling kompleks
 - BR-01 Status awal produksi adalah Draft.
 - BR-02 Produksi memiliki dua jenis: (a) Produksi untuk Pesanan — target produk berasal dari detail pesanan; (b) Produksi untuk Restok — target produk diinput manual oleh admin.
-- BR-03 Kebutuhan bahan baku dihitung dari BOM seluruh produk pada produksi_item, berlaku untuk kedua jenis produksi.
-- BR-04 Produksi hanya bisa mulai (status Proses) jika stok bahan baku mencukupi.
-- BR-05 Saat status jadi Proses, stok bahan baku otomatis dikurangi sesuai BOM.
-- BR-06 Jika stok tidak cukup, status tetap Draft.
+- BR-03 Kebutuhan bahan baku dihitung dari BOM seluruh produk pada produksi_item: `qty_per_pair × qty_target`.
+- BR-04 Produksi dapat dimulai jika semua produk memiliki BOM valid, meskipun stok belum memenuhi seluruh rencana. Kekurangan bahan harus ditampilkan.
+- BR-05 Saat produksi mulai, kebutuhan BOM disimpan sebagai `planned`; tidak ada pemotongan stok BOM otomatis.
+- BR-06 `issued` dan `additional` mengurangi stok. `consumed` menandai bahan sudah digunakan tanpa mengurangi stok lagi. `returned` hanya mengembalikan bahan terbit yang belum digunakan.
 - BR-07 Target per-produk disimpan di tabel `produksi_item` (terpisah dari histori progress di `detail_produksi`). Berfungsi sebagai sumber kebenaran qty per produk untuk kedua jenis produksi.
-- BR-08 Daftar karyawan yang terlibat dalam produksi disimpan di tabel `produksi_karyawan` (pivot). Karyawan dipilih saat Create Produksi, bukan saat input progress. Tabel ini bukan histori progress.
-- BR-09 Progress produksi dicatat per produk berdasarkan output tim yang sudah ditentukan. Admin memilih: produk, qty progress, dan status QC.
-- BR-10 Setiap progress wajib melalui QC. Status QC (lolos/tidak_lolos) disimpan di `detail_produksi.qc_status` agar histori QC dapat diaudit dan progress bar QC dapat dihitung.
-- BR-11 Progress yang lolos QC langsung menambah stok produk jadi sesuai jumlah produk yang lolos.
-- BR-12 Progress yang tidak lolos QC tidak menambah stok dan harus diperbaiki.
-- BR-13 Dropdown produk saat input progress hanya menampilkan produk yang qty lolos QC masih kurang dari qty_target di produksi_item.
-- BR-14 Produksi di-cancel → stok bahan baku yang sudah dipakai dikembalikan otomatis.
-- BR-15 Satu produksi bisa melibatkan lebih dari satu tukang (via produksi_karyawan).
-- BR-16 Produksi untuk Pesanan hanya berasal dari satu pesanan. Produksi untuk Restok tidak terkait pesanan (pesanan_id = null).
-- BR-17 Produksi selesai hanya jika total qty lolos QC dari seluruh produksi_item sama dengan qty_target produksi. Status selesai tidak menambah stok (stok sudah bertambah bertahap).
+- BR-08 Daftar karyawan yang terlibat dalam produksi disimpan di tabel `produksi_karyawan` (pivot). Karyawan dipilih saat Create Produksi, dan setiap progress wajib diatribusikan kepada salah satu anggota tim.
+- BR-09 Progress produksi dicatat per produk dan per karyawan. Admin mencatat produk, pekerja, qty, hasil QC, dan inspector.
+- BR-10 Setiap progress wajib melalui QC finishing. Progress tidak lolos wajib memiliki alasan dan disposisi `rework`, `jual_cacat`, atau `dimusnahkan`.
+- BR-11 Progress lolos QC langsung menambah stok produk jadi normal tepat satu kali dan menjadi dasar output/upah pekerja terkait.
+- BR-12 Progress tidak lolos tidak menambah stok normal dan tidak menjadi dasar upah.
+- BR-13 Rework merujuk progress gagal asal. Hanya hasil rework yang kemudian lolos QC yang menambah stok normal dan dasar upah.
+- BR-14 `jual_cacat` dicatat pada ledger produk cacat; `dimusnahkan` tetap memiliki audit record. Keduanya tidak masuk stok normal.
+- BR-15 Produksi dibatalkan tidak mengembalikan bahan consumed. Maksimum pengembalian adalah `issued + additional − consumed − previous returns`.
+- BR-16 Satu produksi bisa melibatkan lebih dari satu tukang (via produksi_karyawan).
+- BR-17 Produksi untuk Pesanan hanya berasal dari satu pesanan. Produksi untuk Restok tidak terkait pesanan (pesanan_id = null).
+- BR-18 Produksi selesai hanya jika qty lolos memenuhi target, semua kegagalan memiliki disposisi, tidak ada rework aktif, pergerakan bahan konsisten, dan tidak ada kondisi stok invalid.
+- BR-19 Toleransi selisih aktual pemakaian terhadap BOM belum ditetapkan; sistem tidak boleh menciptakan batas toleransi sendiri.
 
 ## Arus Kas (KF-17, KF-18)
 - BR-01 Setiap transaksi wajib berjenis Pemasukan atau Pengeluaran.

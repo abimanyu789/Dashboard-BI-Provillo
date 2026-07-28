@@ -49,10 +49,9 @@ konvensi default Laravel):
 
 ## Business rules kritis (ringkas — lengkap di docs/business-rules.md)
 - Produk wajib punya 1 BOM aktif sebelum bisa diproduksi.
-- Produksi: status awal `Draft`. Sistem hitung kebutuhan bahan dari BOM. Jika stok cukup →
-  status `Proses` + stok bahan baku otomatis berkurang. Jika tidak cukup → tetap `Draft`.
-- Progress produksi dilakukan per produk berdasarkan laporan tukang. Setiap progress yang lolos QC langsung menambah stok produk jadi untuk produk tersebut. Satu Produksi dapat menangani banyak produk dari satu Pesanan.
-- Produksi `Cancel` → stok bahan baku yang sudah terpakai dikembalikan otomatis.
+- Produksi: status awal `Draft`. Sistem menghitung kebutuhan BOM sebagai rencana. Produksi dapat masuk `Proses` meski stok belum cukup; stok hanya berkurang saat bahan diterbitkan (`issued`/`additional`).
+- Progress produksi dicatat per produk dan per karyawan. Progress lolos QC menambah stok normal tepat sekali; progress gagal wajib alasan + disposisi dan tidak menjadi dasar upah.
+- Produksi `Cancel` → bahan consumed tidak dikembalikan; hanya bahan terbit yang belum digunakan dan belum dikembalikan yang masuk kembali ke stok.
 - Stok (bahan baku & produk jadi) tidak boleh negatif.
 - Pesanan: status `Pending → Proses → Done/Cancel`. Status `Done`/`Cancel` tidak bisa dihapus.
 - Pembayaran bisa bertahap; tiap pembayaran otomatis membuat entry Arus Kas (Pemasukan).

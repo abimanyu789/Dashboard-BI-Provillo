@@ -97,6 +97,12 @@ Route::middleware(['auth'])->group(function () {
         ->name('produksi.batalkan');
     Route::patch('produksi/{produksi}/progress', [ProduksiController::class, 'progress'])
         ->name('produksi.progress');
+    Route::post('produksi/{produksi}/material-movements', [ProduksiController::class, 'materialMovement'])
+        ->name('produksi.material-movements.store');
+    Route::patch(
+        'produksi/{produksi}/qc/{detailProduksi}/disposition',
+        [ProduksiController::class, 'updateQcDisposition'],
+    )->name('produksi.qc.disposition.update');
     Route::patch('produksi/{produksi}/selesai', [ProduksiController::class, 'selesai'])
         ->name('produksi.selesai');
 
@@ -106,10 +112,10 @@ Route::middleware(['auth'])->group(function () {
 
     // Pusat Laporan
     Route::prefix('laporan')->name('laporan.')->group(function () {
-        Route::get('/',        [ReportController::class, 'index'])->name('index');
-        Route::get('types',    [ReportController::class, 'types'])->name('types');
+        Route::get('/', [ReportController::class, 'index'])->name('index');
+        Route::get('types', [ReportController::class, 'types'])->name('types');
         Route::post('preview', [ReportController::class, 'preview'])->name('preview');
-        Route::get('export',   [ReportController::class, 'export'])->name('export');
+        Route::get('export', [ReportController::class, 'export'])->name('export');
     });
 });
 

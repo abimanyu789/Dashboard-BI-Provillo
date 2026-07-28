@@ -3,11 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\InputProgressRequest;
+use App\Http\Requests\MaterialMovementRequest;
 use App\Http\Requests\ProduksiRequest;
+use App\Http\Requests\UpdateQcDispositionRequest;
+use App\Models\BahanBaku;
+use App\Models\DetailProduksi;
 use App\Models\Karyawan;
 use App\Models\Pesanan;
 use App\Models\Produk;
 use App\Models\Produksi;
+use App\Services\ProduksiMaterialService;
 use App\Services\ProduksiService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -15,7 +20,8 @@ use Inertia\Inertia;
 class ProduksiController extends Controller
 {
     public function __construct(
-        private readonly ProduksiService $service
+        private readonly ProduksiService $service,
+        private readonly ProduksiMaterialService $materialService,
     ) {}
 
     /**
@@ -23,13 +29,13 @@ class ProduksiController extends Controller
      */
     public function index(Request $request)
     {
-        $search  = $request->input('search');
-        $status  = $request->input('status');
-        $sortBy  = $request->input('sort_by', 'created_at');
+        $search = $request->input('search');
+        $status = $request->input('status');
+        $sortBy = $request->input('sort_by', 'created_at');
         $sortDir = $request->input('sort_dir', 'desc');
 
         $allowedSorts = ['created_at', 'deadline', 'qty_target', 'qty_selesai', 'status'];
-        if (!in_array($sortBy, $allowedSorts)) {
+        if (! in_array($sortBy, $allowedSorts)) {
             $sortBy = 'created_at';
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
@@ -39,9 +45,9 @@ class ProduksiController extends Controller
                 $query->where(function ($q) use ($search) {
                     $q->whereHas('pesanan', function ($q2) use ($search) {
                         $q2->where('nomor_pesanan', 'like', "%{$search}%")
-                          ->orWhereHas('customer', function ($q3) use ($search) {
-                              $q3->where('nama_customer', 'like', "%{$search}%");
-                          });
+                            ->orWhereHas('customer', function ($q3) use ($search) {
+                                $q3->where('nama_customer', 'like', "%{$search}%");
+                            });
                     });
                 });
             })
@@ -54,11 +60,11 @@ class ProduksiController extends Controller
 
         return Inertia::render('produksi/index', [
             'produksis' => $produksis,
-            'summary'   => $this->service->hitungSummary(),
-            'filters'   => [
-                'search'   => $search,
-                'status'   => $status,
-                'sort_by'  => $sortBy,
+            'summary' => $this->service->hitungSummary(),
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+                'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
             ],
         ]);
@@ -90,8 +96,8 @@ class ProduksiController extends Controller
 
         // Jika ada pre-select pesanan_id, hitung kebutuhan bahan
         $selectedPesananId = $request->integer('pesanan_id') ?: null;
-        $kebutuhanBahan    = [];
-        $selectedPesanan   = null;
+        $kebutuhanBahan = [];
+        $selectedPesanan = null;
 
         if ($selectedPesananId) {
             // Buat Produksi dummy sementara untuk hitungKebutuhanBahan
@@ -103,10 +109,10 @@ class ProduksiController extends Controller
 
             if ($selectedPesanan) {
                 // Load produksiItems dari detail_pesanan sementara
-                $tempItems = $selectedPesanan->detailPesanan->map(fn ($d) => (object)[
-                    'produk_id'  => $d->produk_id,
+                $tempItems = $selectedPesanan->detailPesanan->map(fn ($d) => (object) [
+                    'produk_id' => $d->produk_id,
                     'qty_target' => $d->qty,
-                    'produk'     => $d->produk,
+                    'produk' => $d->produk,
                 ]);
 
                 // Hitung kebutuhan manual (tanpa save ke DB)
@@ -115,11 +121,11 @@ class ProduksiController extends Controller
         }
 
         return Inertia::render('produksi/create', [
-            'pesananValid'    => $pesananValid,
-            'produkList'      => $produkList,
-            'karyawanList'    => $karyawanList,
+            'pesananValid' => $pesananValid,
+            'produkList' => $produkList,
+            'karyawanList' => $karyawanList,
             'selectedPesanan' => $selectedPesanan,
-            'kebutuhanBahan'  => $kebutuhanBahan,
+            'kebutuhanBahan' => $kebutuhanBahan,
         ]);
     }
 
@@ -139,7 +145,7 @@ class ProduksiController extends Controller
 
         $label = $produksi->jenis_produksi === 'pesanan'
             ? "pesanan {$produksi->pesanan?->nomor_pesanan}"
-            : "restok";
+            : 'restok';
 
         return redirect()
             ->route('produksi.show', $produksi)
@@ -156,32 +162,100 @@ class ProduksiController extends Controller
             'produksiItems.produk',
             'produksiKaryawans.karyawan',
             'createdBy',
-            'detailProduksi.produk',
+            'detailProduksi' => fn ($query) => $query
+                ->with([
+                    'produk',
+                    'karyawan',
+                    'inspector',
+                    'reworkResults.karyawan',
+                    'defectLedger',
+                ])
+                ->orderBy('created_at')
+                ->orderBy('id'),
+            'materialMovements' => fn ($query) => $query
+                ->with(['bahanBaku', 'createdBy', 'stokHistory'])
+                ->orderBy('tanggal')
+                ->orderBy('created_at')
+                ->orderBy('id'),
+            'defectLedgers',
         ]);
 
-        $kebutuhanBahan    = $this->service->hitungKebutuhanBahan($produksi);
-        $stokCukup         = $this->service->cekKecukupanStok($produksi);
+        $kebutuhanBahan = $this->service->hitungKebutuhanBahan($produksi);
+        $stokCukup = $this->service->cekKecukupanStok($produksi);
         $progressPerProduk = $this->service->hitungProgressPerProduk($produksi);
+        $materialSummary = $produksi->materialMovements->isNotEmpty()
+            ? $this->materialService->materialSummary($produksi)
+            : collect($kebutuhanBahan)->map(fn (array $material): array => [
+                'id' => $material['id'],
+                'kode_bahan' => $material['kode_bahan'],
+                'nama_bahan' => $material['nama_bahan'],
+                'satuan' => $material['satuan'],
+                'planned' => (float) $material['kebutuhan'],
+                'available' => (float) $material['stok_tersedia'],
+                'issued' => 0.0,
+                'consumed' => 0.0,
+                'returned' => 0.0,
+                'shortage' => (float) $material['kebutuhan'],
+                'returnable' => 0.0,
+                'status' => $material['cukup'] ? 'sufficient' : 'shortage',
+            ])->values()->all();
+
+        $failedProgress = $produksi->detailProduksi
+            ->where('qc_status', 'tidak_lolos');
+        $activeRework = $failedProgress
+            ->where('disposisi_qc', 'rework')
+            ->map(function (DetailProduksi $detail): array {
+                $processed = (int) $detail->reworkResults->sum('qty_selesai');
+
+                return [
+                    'id' => $detail->id,
+                    'produk_id' => $detail->produk_id,
+                    'produk' => $detail->produk,
+                    'karyawan' => $detail->karyawan,
+                    'qty_gagal' => (int) $detail->qty_selesai,
+                    'qty_diproses' => $processed,
+                    'qty_aktif' => max(0, (int) $detail->qty_selesai - $processed),
+                    'alasan_qc' => $detail->alasan_qc,
+                    'created_at' => $detail->created_at,
+                ];
+            })
+            ->filter(fn (array $item): bool => $item['qty_aktif'] > 0)
+            ->values();
+
+        $qcSummary = [
+            'lolos' => (int) $produksi->detailProduksi->where('qc_status', 'lolos')->sum('qty_selesai'),
+            'tidak_lolos' => (int) $failedProgress->sum('qty_selesai'),
+            'jual_cacat' => (int) $produksi->defectLedgers->where('disposisi', 'jual_cacat')->sum('qty'),
+            'dimusnahkan' => (int) $produksi->defectLedgers->where('disposisi', 'dimusnahkan')->sum('qty'),
+            'rework_aktif' => (int) $activeRework->sum('qty_aktif'),
+        ];
 
         // Daftar produk yang masih perlu progress (qty lolos < target)
         $produkBelumSelesai = $produksi->produksiItems
             ->filter(fn ($item) => ($progressPerProduk[$item->produk_id]['lolos'] ?? 0) < $item->qty_target)
             ->map(fn ($item) => [
-                'id'          => $item->produk->id,
+                'id' => $item->produk->id,
                 'kode_produk' => $item->produk->kode_produk,
                 'nama_produk' => $item->produk->nama_produk,
-                'qty_target'  => $item->qty_target,
-                'qty_lolos'   => $progressPerProduk[$item->produk_id]['lolos'] ?? 0,
-                'sisa'        => $item->qty_target - ($progressPerProduk[$item->produk_id]['lolos'] ?? 0),
+                'qty_target' => $item->qty_target,
+                'qty_lolos' => $progressPerProduk[$item->produk_id]['lolos'] ?? 0,
+                'sisa' => $item->qty_target - ($progressPerProduk[$item->produk_id]['lolos'] ?? 0),
             ])
             ->values();
 
         return Inertia::render('produksi/show', [
-            'produksi'          => $produksi,
-            'kebutuhanBahan'    => $kebutuhanBahan,
-            'stokCukup'         => $stokCukup,
+            'produksi' => $produksi,
+            'kebutuhanBahan' => $kebutuhanBahan,
+            'stokCukup' => $stokCukup,
             'progressPerProduk' => $progressPerProduk,
             'produkBelumSelesai' => $produkBelumSelesai,
+            'materialSummary' => $materialSummary,
+            'materialOptions' => BahanBaku::query()
+                ->orderBy('nama_bahan')
+                ->get(['id', 'kode_bahan', 'nama_bahan', 'satuan', 'stok']),
+            'activeRework' => $activeRework,
+            'qcSummary' => $qcSummary,
+            'wageBasis' => $this->service->wageBasis($produksi),
         ]);
     }
 
@@ -196,7 +270,10 @@ class ProduksiController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', 'Produksi berhasil dimulai. Stok bahan baku telah dikurangi.');
+        return back()->with(
+            'success',
+            'Produksi berhasil dimulai. Kebutuhan BOM dicatat tanpa pemotongan stok otomatis.',
+        );
     }
 
     /**
@@ -220,11 +297,9 @@ class ProduksiController extends Controller
     {
         try {
             $this->service->inputProgress(
-                produksi:  $produksi,
-                produkId:  $request->validated('produk_id'),
-                qty:       $request->validated('qty'),
-                qcStatus:  $request->validated('qc_status'),
-                userId:    auth()->id(),
+                produksi: $produksi,
+                data: $request->validated(),
+                userId: auth()->id(),
             );
         } catch (\RuntimeException $e) {
             return back()->with('error', $e->getMessage());
@@ -235,6 +310,40 @@ class ProduksiController extends Controller
             : 'Progress dicatat sebagai tidak lolos QC. Stok tidak berubah.';
 
         return back()->with('success', $msg);
+    }
+
+    public function materialMovement(MaterialMovementRequest $request, Produksi $produksi)
+    {
+        try {
+            $this->materialService->recordMovement(
+                $produksi,
+                $request->validated(),
+                auth()->id(),
+            );
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Pergerakan bahan berhasil dicatat dan riwayat stok diperbarui.');
+    }
+
+    public function updateQcDisposition(
+        UpdateQcDispositionRequest $request,
+        Produksi $produksi,
+        DetailProduksi $detailProduksi,
+    ) {
+        try {
+            $this->service->updateQcDisposition(
+                $produksi,
+                $detailProduksi,
+                $request->validated(),
+                auth()->id(),
+            );
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Disposisi kegagalan QC berhasil dicatat.');
     }
 
     /**
@@ -264,30 +373,30 @@ class ProduksiController extends Controller
         foreach ($items as $item) {
             $produk = $item->produk;
 
-            if (!$produk || !$produk->bomCategorie) {
+            if (! $produk || ! $produk->bomCategorie) {
                 continue;
             }
 
             foreach ($produk->bomCategorie->bomDetails as $bomDetail) {
                 $bahanBaku = $bomDetail->bahanBaku;
-                if (!$bahanBaku) {
+                if (! $bahanBaku) {
                     continue;
                 }
 
-                $id           = $bahanBaku->id;
+                $id = $bahanBaku->id;
                 $kebutuhanQty = (float) $bomDetail->qty_per_pair * $item->qty_target;
 
                 if (isset($kebutuhan[$id])) {
                     $kebutuhan[$id]['kebutuhan'] += $kebutuhanQty;
                 } else {
                     $kebutuhan[$id] = [
-                        'id'            => $id,
-                        'kode_bahan'    => $bahanBaku->kode_bahan,
-                        'nama_bahan'    => $bahanBaku->nama_bahan,
-                        'satuan'        => $bahanBaku->satuan ?? '',
-                        'kebutuhan'     => $kebutuhanQty,
+                        'id' => $id,
+                        'kode_bahan' => $bahanBaku->kode_bahan,
+                        'nama_bahan' => $bahanBaku->nama_bahan,
+                        'satuan' => $bahanBaku->satuan ?? '',
+                        'kebutuhan' => $kebutuhanQty,
                         'stok_tersedia' => (float) $bahanBaku->stok,
-                        'cukup'         => true,
+                        'cukup' => true,
                     ];
                 }
             }

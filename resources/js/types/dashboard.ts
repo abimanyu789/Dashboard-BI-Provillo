@@ -40,11 +40,20 @@ export interface TopEmployee {
     total_output: number;
 }
 
+export interface OperationalIndicators {
+    activeRework: number;
+    failedQcQty: number;
+    productionsWithShortage: number;
+    outstandingReceivables: number;
+    ordersNotFullyShipped: number;
+}
+
 export interface DashboardProps {
     stats: DashboardStats;
     financialChart: FinancialChartData[];
     bestSellers: BestSeller[];
     activeOrders: ActiveOrder[];
     topEmployees: TopEmployee[];
+    operationalIndicators: OperationalIndicators;
     filter: string;
 }
