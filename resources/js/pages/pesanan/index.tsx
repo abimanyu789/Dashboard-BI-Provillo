@@ -168,6 +168,7 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                                 <TableHead>Customer</TableHead>
                                 {sortableHead('tanggal', 'Tanggal')}
                                 {sortableHead('status', 'Status')}
+                                <TableHead>Status Pembayaran</TableHead>
                                 {sortableHead('total', 'Total', 'text-right')}
                                 <TableHead className="w-28 text-center">Aksi</TableHead>
                             </TableRow>
@@ -175,7 +176,7 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                         <TableBody>
                             {pesanans.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                                         {search || status ? 'Tidak ada data yang ditemukan.' : 'Belum ada pesanan.'}
                                     </TableCell>
                                 </TableRow>
@@ -196,6 +197,21 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                                         </TableCell>
                                         <TableCell>
                                             <PesananStatusBadge status={item.status} />
+                                        </TableCell>
+                                        <TableCell>
+                                            <span className={
+                                                item.status_pembayaran === 'lunas'
+                                                    ? 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400'
+                                                    : item.status_pembayaran === 'sebagian'
+                                                    ? 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400'
+                                                    : 'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400'
+                                            }>
+                                                {item.status_pembayaran === 'lunas'
+                                                    ? 'Lunas'
+                                                    : item.status_pembayaran === 'sebagian'
+                                                    ? 'Sebagian'
+                                                    : 'Belum Bayar'}
+                                            </span>
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-sm font-medium">
                                             {formatRupiah(item.total)}

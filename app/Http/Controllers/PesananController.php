@@ -34,7 +34,7 @@ class PesananController extends Controller
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
 
-        $pesanans = Pesanan::with('customer')
+        $pesanans = Pesanan::with(['customer', 'pembayarans'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('nomor_pesanan', 'like', "%{$search}%")
@@ -49,6 +49,12 @@ class PesananController extends Controller
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)
             ->withQueryString();
+
+        // Append status_pembayaran ke tiap item (derived dari pembayarans yang sudah eager loaded)
+        $pesanans->getCollection()->transform(function (Pesanan $p) {
+            $p->status_pembayaran = $p->statusPembayaran();
+            return $p;
+        });
 
         return Inertia::render('pesanan/index', [
             'pesanans' => $pesanans,
