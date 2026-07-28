@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\BahanBaku;
 use App\Models\Produksi;
 use App\Models\ProduksiPemakaianBahan;
+use App\Services\ProduksiMaterialService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -79,11 +81,115 @@ class MaterialMovementRequest extends FormRequest
                     'bahan_baku_id',
                     'Bahan baku di luar kebutuhan BOM produksi ini tidak diizinkan.',
                 );
+
+                return;
             }
 
-            // Catatan: penegakan stok negatif & max returnable tetap di service.
-            unset($movementType);
+            // Batas qty per jenis pergerakan (sumber sisa rencana = materialSummary.shortage).
+            // Service tetap menjadi penegak akhir anti-bypass / race condition.
+            $this->validateQuantityLimits(
+                $validator,
+                $produksi,
+                $bahanBakuId,
+                $movementType,
+                (float) $this->input('qty'),
+            );
         });
+    }
+
+    private function validateQuantityLimits(
+        Validator $validator,
+        Produksi $produksi,
+        int $bahanBakuId,
+        string $movementType,
+        float $qty,
+    ): void {
+        if (in_array($movementType, ['adjustment'], true)) {
+            return;
+        }
+
+        if ($qty <= 0) {
+            return;
+        }
+
+        /** @var ProduksiMaterialService $materialService */
+        $materialService = app(ProduksiMaterialService::class);
+        $summary = collect($materialService->materialSummary($produksi))
+            ->firstWhere('id', $bahanBakuId);
+
+        if (! is_array($summary)) {
+            return;
+        }
+
+        $available = (float) ($summary['available'] ?? 0);
+        $remainingPlanned = (float) ($summary['shortage'] ?? 0);
+        $returnable = (float) ($summary['returnable'] ?? 0);
+        $epsilon = 0.00001;
+
+        if ($movementType === 'issued') {
+            if ($remainingPlanned <= $epsilon) {
+                $validator->errors()->add(
+                    'movement_type',
+                    'Kebutuhan bahan berdasarkan rencana sudah terpenuhi.',
+                );
+                $validator->errors()->add(
+                    'qty',
+                    'Kebutuhan bahan berdasarkan rencana sudah terpenuhi. Gunakan Bahan Tambahan Dikeluarkan untuk kelebihan di luar rencana.',
+                );
+
+                return;
+            }
+
+            $maxIssued = min($remainingPlanned, max(0.0, $available));
+
+            if ($qty - $maxIssued > $epsilon) {
+                $validator->errors()->add(
+                    'qty',
+                    'Jumlah Bahan Dikeluarkan melebihi batas. '
+                    ."Maksimum: {$maxIssued} (sisa rencana {$remainingPlanned}, stok gudang {$available}). "
+                    .'Gunakan Bahan Tambahan Dikeluarkan untuk kelebihan di luar rencana.',
+                );
+            }
+
+            return;
+        }
+
+        if ($movementType === 'additional') {
+            if ($qty - max(0.0, $available) > $epsilon) {
+                $bahan = BahanBaku::query()->find($bahanBakuId);
+                $nama = $bahan?->nama_bahan ?? 'bahan baku';
+                $validator->errors()->add(
+                    'qty',
+                    "Stok {$nama} tidak mencukupi. Tersedia: {$available}, diminta: {$qty}.",
+                );
+            }
+
+            return;
+        }
+
+        if (in_array($movementType, ['consumed', 'returned'], true)) {
+            if ($returnable <= $epsilon) {
+                $label = $movementType === 'consumed'
+                    ? 'Bahan Terpakai'
+                    : 'Bahan Dikembalikan';
+                $validator->errors()->add(
+                    'qty',
+                    "Tidak ada sisa bahan yang dapat dicatat sebagai {$label}.",
+                );
+
+                return;
+            }
+
+            if ($qty - $returnable > $epsilon) {
+                $label = $movementType === 'consumed'
+                    ? 'Bahan Terpakai'
+                    : 'Bahan Dikembalikan';
+                $validator->errors()->add(
+                    'qty',
+                    "Jumlah {$label} melebihi bahan yang masih dapat diproses. Maksimum: {$returnable}.",
+                );
+            }
+        }
     }
 
     public function messages(): array

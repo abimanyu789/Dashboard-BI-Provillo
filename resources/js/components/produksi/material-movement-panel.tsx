@@ -58,20 +58,86 @@ interface MaterialMovementPanelProps {
 
 type BulkQtyMap = Record<number, string>;
 
-function suggestedIssueQty(material: MaterialSummary): number {
-    const remainingPlanned = Math.max(
-        0,
-        material.planned - (material.issued - material.returned),
-    );
-
-    return Math.min(remainingPlanned, Math.max(0, material.available));
+/**
+ * Sisa kebutuhan rencana — sumber yang sama dengan materialSummary.shortage di backend.
+ * Backend menghitung: max(0, planned − max(0, (issued+additional) − returned))
+ * dan field summary.issued sudah berisi issued + additional.
+ */
+function remainingPlannedQty(material: MaterialSummary): number {
+    return Math.max(0, material.shortage);
 }
 
-function remainingPlannedQty(material: MaterialSummary): number {
-    return Math.max(
-        0,
-        material.planned - (material.issued - material.returned),
+function suggestedIssueQty(material: MaterialSummary): number {
+    return Math.min(
+        remainingPlannedQty(material),
+        Math.max(0, material.available),
     );
+}
+
+function maxQtyForMovement(
+    material: MaterialSummary | undefined,
+    movementType: MaterialMovementFormData['movement_type'],
+): number | null {
+    if (!material) {
+        return null;
+    }
+
+    if (movementType === 'issued') {
+        return Math.min(
+            remainingPlannedQty(material),
+            Math.max(0, material.available),
+        );
+    }
+
+    if (movementType === 'additional') {
+        return Math.max(0, material.available);
+    }
+
+    if (movementType === 'consumed' || movementType === 'returned') {
+        return Math.max(0, material.returnable);
+    }
+
+    // adjustment: tidak dibatasi di UI selain stok negatif di backend
+    return null;
+}
+
+function zeroMaxReason(
+    material: MaterialSummary | undefined,
+    movementType: MaterialMovementFormData['movement_type'],
+): string | null {
+    if (!material) {
+        return null;
+    }
+
+    if (movementType === 'issued') {
+        if (remainingPlannedQty(material) <= 0.00001) {
+            return 'Kebutuhan bahan berdasarkan rencana sudah terpenuhi.';
+        }
+
+        if (material.available <= 0.00001) {
+            return 'Stok gudang tidak tersedia untuk mengeluarkan bahan.';
+        }
+
+        return 'Jumlah maksimum yang dapat dikeluarkan saat ini adalah 0.';
+    }
+
+    if (movementType === 'additional') {
+        if (material.available <= 0.00001) {
+            return 'Stok gudang tidak tersedia untuk bahan tambahan.';
+        }
+
+        return 'Jumlah maksimum yang dapat dikeluarkan saat ini adalah 0.';
+    }
+
+    if (movementType === 'consumed') {
+        return 'Tidak ada sisa bahan yang dapat ditandai sebagai Bahan Terpakai.';
+    }
+
+    if (movementType === 'returned') {
+        return 'Tidak ada sisa bahan yang dapat dikembalikan ke gudang.';
+    }
+
+    return null;
 }
 
 export function MaterialMovementPanel({
@@ -118,23 +184,57 @@ export function MaterialMovementPanel({
     const selectedMaterial = materialSummary.find(
         (material) => material.id === Number(data.bahan_baku_id),
     );
-    // Cap qty: consumed/returned by returnable; issued/additional by warehouse stock.
-    const maxForSelected =
-        data.movement_type === 'consumed' || data.movement_type === 'returned'
-            ? (selectedMaterial?.returnable ?? 0)
-            : data.movement_type === 'issued' ||
-                data.movement_type === 'additional'
-              ? (selectedMaterial?.available ?? 0)
-              : null;
+    const remainingForSelected = selectedMaterial
+        ? remainingPlannedQty(selectedMaterial)
+        : 0;
+    const planAlreadyFulfilled =
+        data.movement_type === 'issued' &&
+        !!selectedMaterial &&
+        remainingForSelected <= 0.00001;
+    // Cap qty dari sumber summary yang sama dengan backend.
+    const maxForSelected = maxQtyForMovement(
+        selectedMaterial,
+        data.movement_type,
+    );
     const qtyNumber = Number(data.qty || 0);
     const exceedsMax =
         maxForSelected !== null &&
         qtyNumber > 0 &&
         qtyNumber - maxForSelected > 0.00001;
+    const maxIsZero =
+        maxForSelected !== null &&
+        maxForSelected <= 0.00001 &&
+        !!selectedMaterial;
+    const zeroReason = maxIsZero
+        ? zeroMaxReason(selectedMaterial, data.movement_type)
+        : null;
+    const projectedStockAfter =
+        selectedMaterial &&
+        (data.movement_type === 'issued' ||
+            data.movement_type === 'additional') &&
+        qtyNumber > 0
+            ? selectedMaterial.available - qtyNumber
+            : selectedMaterial &&
+                data.movement_type === 'returned' &&
+                qtyNumber > 0
+              ? selectedMaterial.available + qtyNumber
+              : null;
     const maxLimitLabel =
-        data.movement_type === 'consumed' || data.movement_type === 'returned'
-            ? 'maksimum yang dapat ditandai/dikembalikan'
-            : 'stok gudang tersedia';
+        data.movement_type === 'issued'
+            ? 'batas sisa rencana & stok gudang'
+            : data.movement_type === 'additional'
+              ? 'stok gudang tersedia'
+              : data.movement_type === 'consumed' ||
+                  data.movement_type === 'returned'
+                ? 'maksimum yang dapat ditandai/dikembalikan'
+                : 'batas pergerakan';
+    const canSubmitManual =
+        !processing &&
+        !exceedsMax &&
+        !maxIsZero &&
+        !planAlreadyFulfilled &&
+        data.bahan_baku_id !== '' &&
+        qtyNumber !== 0;
 
     const needsIssue = useMemo(
         () =>
@@ -249,7 +349,7 @@ export function MaterialMovementPanel({
     const submitManual = (event: React.FormEvent) => {
         event.preventDefault();
 
-        if (exceedsMax) {
+        if (!canSubmitManual) {
             return;
         }
 
@@ -571,12 +671,26 @@ export function MaterialMovementPanel({
                                             'planned'
                                         >[]
                                     ).map((type) => (
-                                        <SelectItem key={type} value={type}>
+                                        <SelectItem
+                                            key={type}
+                                            value={type}
+                                            disabled={
+                                                type === 'issued' &&
+                                                planAlreadyFulfilled
+                                            }
+                                        >
                                             {materialMovementLabel(type)}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {planAlreadyFulfilled && (
+                                <p className="text-sm text-amber-700 dark:text-amber-300">
+                                    Kebutuhan bahan berdasarkan rencana sudah
+                                    terpenuhi. Gunakan Bahan Tambahan
+                                    Dikeluarkan untuk kelebihan di luar rencana.
+                                </p>
+                            )}
                             {errors.movement_type && (
                                 <p className="text-sm text-destructive">
                                     {errors.movement_type}
@@ -590,6 +704,7 @@ export function MaterialMovementPanel({
                                 type="number"
                                 step="0.01"
                                 value={data.qty}
+                                disabled={maxIsZero || planAlreadyFulfilled}
                                 onChange={(event) => {
                                     const next = event.target.value;
 
@@ -599,19 +714,87 @@ export function MaterialMovementPanel({
                                     );
                                 }}
                             />
-                            {maxForSelected !== null && (
-                                <p className="text-xs text-muted-foreground">
-                                    Maksimum ({maxLimitLabel}):{' '}
-                                    <span className="font-mono">
-                                        {maxForSelected.toFixed(2)}
-                                    </span>
+                            {selectedMaterial &&
+                                data.movement_type !== 'adjustment' && (
+                                    <div className="space-y-0.5 text-xs text-muted-foreground">
+                                        {(data.movement_type === 'issued' ||
+                                            data.movement_type ===
+                                                'additional') && (
+                                            <>
+                                                <p>
+                                                    Sisa kebutuhan rencana:{' '}
+                                                    <span className="font-mono text-foreground">
+                                                        {remainingForSelected.toFixed(
+                                                            2,
+                                                        )}{' '}
+                                                        {
+                                                            selectedMaterial.satuan
+                                                        }
+                                                    </span>
+                                                </p>
+                                                <p>
+                                                    Stok gudang:{' '}
+                                                    <span className="font-mono text-foreground">
+                                                        {selectedMaterial.available.toFixed(
+                                                            2,
+                                                        )}{' '}
+                                                        {
+                                                            selectedMaterial.satuan
+                                                        }
+                                                    </span>
+                                                </p>
+                                            </>
+                                        )}
+                                        {(data.movement_type === 'consumed' ||
+                                            data.movement_type ===
+                                                'returned') && (
+                                            <p>
+                                                Sisa bahan yang dapat diproses:{' '}
+                                                <span className="font-mono text-foreground">
+                                                    {selectedMaterial.returnable.toFixed(
+                                                        2,
+                                                    )}{' '}
+                                                    {selectedMaterial.satuan}
+                                                </span>
+                                            </p>
+                                        )}
+                                        {maxForSelected !== null && (
+                                            <p>
+                                                Jumlah maksimum ({maxLimitLabel}
+                                                ):{' '}
+                                                <span className="font-mono text-foreground">
+                                                    {maxForSelected.toFixed(2)}{' '}
+                                                    {selectedMaterial.satuan}
+                                                </span>
+                                            </p>
+                                        )}
+                                        {projectedStockAfter !== null && (
+                                            <p>
+                                                Perkiraan stok gudang setelah
+                                                transaksi:{' '}
+                                                <span className="font-mono text-foreground">
+                                                    {projectedStockAfter.toFixed(
+                                                        2,
+                                                    )}{' '}
+                                                    {selectedMaterial.satuan}
+                                                </span>
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            {zeroReason && (
+                                <p className="text-sm text-amber-700 dark:text-amber-300">
+                                    {zeroReason}
                                 </p>
                             )}
                             {exceedsMax && (
                                 <p className="text-sm font-medium text-destructive">
                                     Jumlah melebihi {maxLimitLabel} (
-                                    {maxForSelected?.toFixed(2)}). Turunkan qty
-                                    agar tidak menimbulkan stok negatif.
+                                    {maxForSelected?.toFixed(2)}
+                                    {selectedMaterial
+                                        ? ` ${selectedMaterial.satuan}`
+                                        : ''}{' '}
+                                    ).
                                 </p>
                             )}
                             {errors.qty && (
@@ -665,10 +848,7 @@ export function MaterialMovementPanel({
                         </div>
 
                         <div className="md:col-span-2">
-                            <Button
-                                type="submit"
-                                disabled={processing || exceedsMax}
-                            >
+                            <Button type="submit" disabled={!canSubmitManual}>
                                 <ArrowDownToLine className="mr-2 size-4" />
                                 {processing
                                     ? 'Menyimpan...'

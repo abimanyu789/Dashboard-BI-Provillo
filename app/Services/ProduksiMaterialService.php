@@ -197,10 +197,46 @@ class ProduksiMaterialService
                 ->lockForUpdate()
                 ->findOrFail($data['bahan_baku_id']);
 
-            if (in_array($movementType, ['consumed', 'returned'], true)) {
-                $returnable = $this->returnableQuantity($lockedProduksi->id, $bahanBaku->id);
+            // Batas qty mengikat ke materialSummary (sumber sisa rencana = field shortage).
+            // issued ≠ additional: kelebihan di luar rencana wajib dicatat sebagai additional.
+            if (in_array($movementType, ['issued', 'additional', 'consumed', 'returned'], true)) {
+                $summaryRow = collect($this->materialSummary($lockedProduksi))
+                    ->firstWhere('id', $bahanBaku->id);
 
-                if ($qty - $returnable > self::STOCK_EPSILON) {
+                $available = (float) ($summaryRow['available'] ?? (float) $bahanBaku->getAttribute('stok'));
+                $remainingPlanned = (float) ($summaryRow['shortage'] ?? 0.0);
+                $returnable = (float) ($summaryRow['returnable']
+                    ?? $this->returnableQuantity($lockedProduksi->id, $bahanBaku->id));
+
+                if ($movementType === 'issued') {
+                    if ($remainingPlanned <= self::STOCK_EPSILON) {
+                        throw new \RuntimeException(
+                            'Kebutuhan bahan berdasarkan rencana sudah terpenuhi. '
+                            .'Gunakan Bahan Tambahan Dikeluarkan apabila benar-benar membutuhkan bahan melebihi rencana.'
+                        );
+                    }
+
+                    $maxIssued = min($remainingPlanned, max(0.0, $available));
+
+                    if ($qty - $maxIssued > self::STOCK_EPSILON) {
+                        throw new \RuntimeException(
+                            'Jumlah Bahan Dikeluarkan melebihi sisa kebutuhan rencana atau stok gudang. '
+                            ."Maksimum: {$maxIssued} (sisa rencana {$remainingPlanned}, stok gudang {$available}). "
+                            .'Gunakan Bahan Tambahan Dikeluarkan untuk kelebihan di luar rencana.'
+                        );
+                    }
+                }
+
+                if ($movementType === 'additional' && $qty - max(0.0, $available) > self::STOCK_EPSILON) {
+                    throw new \RuntimeException(
+                        "Stok {$bahanBaku->nama_bahan} tidak mencukupi. "
+                        ."Tersedia: {$available}, diminta: {$qty}."
+                    );
+                }
+
+                if (in_array($movementType, ['consumed', 'returned'], true)
+                    && $qty - $returnable > self::STOCK_EPSILON
+                ) {
                     $label = $movementType === 'consumed'
                         ? 'Bahan Terpakai'
                         : 'Bahan Dikembalikan';
