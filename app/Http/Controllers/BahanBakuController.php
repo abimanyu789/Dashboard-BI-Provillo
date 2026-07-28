@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\BahanBakuRequest;
 use App\Models\BahanBaku;
+use App\Support\StockLevel;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Exports\BahanBakuExport;
@@ -21,17 +22,22 @@ class BahanBakuController extends Controller
      */
     public function index(Request $request)
     {
-        $search  = $request->input('search');
-        $satuan  = $request->input('satuan');
-        $sortBy  = $request->input('sort_by', 'created_at');
+        $search = $request->input('search');
+        $satuan = $request->input('satuan');
+        $stockStatus = $request->input('stock_status');
+        $sortBy = $request->input('sort_by', 'created_at');
         $sortDir = $request->input('sort_dir', 'desc');
 
         // Whitelist kolom yang boleh di-sort
-        $allowedSorts = ['kode_bahan', 'nama_bahan', 'satuan', 'minimum_stok', 'created_at'];
-        if (!in_array($sortBy, $allowedSorts)) {
+        $allowedSorts = ['kode_bahan', 'nama_bahan', 'satuan', 'stok', 'minimum_stok', 'created_at'];
+        if (! in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'created_at';
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
+
+        if (! StockLevel::isValid(is_string($stockStatus) ? $stockStatus : null)) {
+            $stockStatus = null;
+        }
 
         $bahanBakus = BahanBaku::query()
             ->when($search, function ($query, $search) {
@@ -44,16 +50,21 @@ class BahanBakuController extends Controller
             ->when($satuan, function ($query, $satuan) {
                 $query->where('satuan', $satuan);
             })
+            ->when(
+                $stockStatus,
+                fn ($query) => StockLevel::applyFilter($query, is_string($stockStatus) ? $stockStatus : null),
+            )
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)
             ->withQueryString();
 
         return Inertia::render('bahan-baku/index', [
-            'bahanBakus'    => $bahanBakus,
-            'filters'       => [
-                'search'   => $search,
-                'satuan'   => $satuan,
-                'sort_by'  => $sortBy,
+            'bahanBakus' => $bahanBakus,
+            'filters' => [
+                'search' => $search,
+                'satuan' => $satuan,
+                'stock_status' => $stockStatus,
+                'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
             ],
             'satuanOptions' => $this->getSatuanOptions(),

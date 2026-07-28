@@ -58,6 +58,7 @@ export interface ProdukIndexProps {
     filters: {
         search?: string;
         bom?: string;
+        stock_status?: string;
         sort_by?: string;
         sort_dir?: string;
     };

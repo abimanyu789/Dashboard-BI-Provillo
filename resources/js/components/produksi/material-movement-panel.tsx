@@ -118,15 +118,23 @@ export function MaterialMovementPanel({
     const selectedMaterial = materialSummary.find(
         (material) => material.id === Number(data.bahan_baku_id),
     );
+    // Cap qty: consumed/returned by returnable; issued/additional by warehouse stock.
     const maxForSelected =
         data.movement_type === 'consumed' || data.movement_type === 'returned'
             ? (selectedMaterial?.returnable ?? 0)
-            : null;
+            : data.movement_type === 'issued' ||
+                data.movement_type === 'additional'
+              ? (selectedMaterial?.available ?? 0)
+              : null;
     const qtyNumber = Number(data.qty || 0);
     const exceedsMax =
         maxForSelected !== null &&
         qtyNumber > 0 &&
         qtyNumber - maxForSelected > 0.00001;
+    const maxLimitLabel =
+        data.movement_type === 'consumed' || data.movement_type === 'returned'
+            ? 'maksimum yang dapat ditandai/dikembalikan'
+            : 'stok gudang tersedia';
 
     const needsIssue = useMemo(
         () =>
@@ -509,7 +517,7 @@ export function MaterialMovementPanel({
                             <SearchableCombobox
                                 items={materialOptions.map((option) => ({
                                     value: option.id,
-                                    label: `${option.kode_bahan} — ${option.nama_bahan}`,
+                                    label: `${option.kode_bahan} — ${option.nama_bahan} (stok ${Number(option.stok).toFixed(2)})`,
                                 }))}
                                 value={
                                     data.bahan_baku_id === ''
@@ -522,8 +530,13 @@ export function MaterialMovementPanel({
                                         value === '' ? '' : Number(value),
                                     )
                                 }
-                                placeholder="Pilih bahan..."
+                                placeholder="Pilih bahan kebutuhan BOM..."
+                                emptyText="Tidak ada bahan pada rencana produksi."
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Hanya menampilkan bahan dari kebutuhan BOM
+                                produksi ini.
+                            </p>
                             {errors.bahan_baku_id && (
                                 <p className="text-sm text-destructive">
                                     {errors.bahan_baku_id}
@@ -588,15 +601,17 @@ export function MaterialMovementPanel({
                             />
                             {maxForSelected !== null && (
                                 <p className="text-xs text-muted-foreground">
-                                    Maksimum:{' '}
+                                    Maksimum ({maxLimitLabel}):{' '}
                                     <span className="font-mono">
                                         {maxForSelected.toFixed(2)}
                                     </span>
                                 </p>
                             )}
                             {exceedsMax && (
-                                <p className="text-sm text-destructive">
-                                    Jumlah melebihi maksimum yang diizinkan.
+                                <p className="text-sm font-medium text-destructive">
+                                    Jumlah melebihi {maxLimitLabel} (
+                                    {maxForSelected?.toFixed(2)}). Turunkan qty
+                                    agar tidak menimbulkan stok negatif.
                                 </p>
                             )}
                             {errors.qty && (

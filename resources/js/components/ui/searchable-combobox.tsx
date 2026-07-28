@@ -46,31 +46,40 @@ export function SearchableCombobox({
     const [open, setOpen] = React.useState(false)
     const [search, setSearch] = React.useState('')
 
-    const selectedItem = items.find((item) => item.value === value)
+    // Loose compare: form may store number while combobox value is string/number.
+    const selectedItem = items.find(
+        (item) => String(item.value) === String(value ?? ''),
+    )
+    const hasValue =
+        value !== undefined && value !== null && String(value) !== ''
 
-    const filtered = search.trim() === ''
-        ? items
-        : items.filter((item) =>
-              item.label.toLowerCase().includes(search.toLowerCase())
-          )
+    const filtered =
+        search.trim() === ''
+            ? items
+            : items.filter((item) =>
+                  item.label.toLowerCase().includes(search.toLowerCase()),
+              )
 
     const handleOpenChange = (nextOpen: boolean) => {
         setOpen(nextOpen)
-        if (!nextOpen) setSearch('')
+        if (!nextOpen) {
+            setSearch('')
+        }
     }
 
     return (
         <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger asChild>
                 <Button
+                    type="button"
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
                     disabled={disabled}
                     className={cn(
-                        "w-full justify-between font-normal",
-                        !value && "text-muted-foreground",
-                        className
+                        'w-full justify-between font-normal',
+                        !hasValue && 'text-muted-foreground',
+                        className,
                     )}
                 >
                     <span className="truncate">
@@ -79,7 +88,10 @@ export function SearchableCombobox({
                     <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+            <PopoverContent
+                className="w-[var(--radix-popover-trigger-width)] p-0"
+                align="start"
+            >
                 <Command shouldFilter={false}>
                     <CommandInput
                         placeholder={searchPlaceholder}
@@ -89,24 +101,34 @@ export function SearchableCombobox({
                     <CommandList>
                         <CommandEmpty>{emptyText}</CommandEmpty>
                         <CommandGroup>
-                            {filtered.map((item) => (
-                                <CommandItem
-                                    key={item.value}
-                                    value={String(item.value)}
-                                    onSelect={() => {
-                                        onValueChange(item.value)
-                                        setOpen(false)
-                                    }}
-                                >
-                                    <Check
-                                        className={cn(
-                                            "mr-2 flex-shrink-0 size-4",
-                                            value === item.value ? "opacity-100" : "opacity-0"
-                                        )}
-                                    />
-                                    <span className="truncate">{item.label}</span>
-                                </CommandItem>
-                            ))}
+                            {filtered.map((item) => {
+                                const isSelected =
+                                    String(item.value) === String(value ?? '')
+
+                                return (
+                                    <CommandItem
+                                        key={String(item.value)}
+                                        value={`${item.label} ${String(item.value)}`}
+                                        onSelect={() => {
+                                            onValueChange(item.value)
+                                            setOpen(false)
+                                            setSearch('')
+                                        }}
+                                    >
+                                        <Check
+                                            className={cn(
+                                                'mr-2 size-4 shrink-0',
+                                                isSelected
+                                                    ? 'opacity-100'
+                                                    : 'opacity-0',
+                                            )}
+                                        />
+                                        <span className="truncate">
+                                            {item.label}
+                                        </span>
+                                    </CommandItem>
+                                )
+                            })}
                         </CommandGroup>
                     </CommandList>
                 </Command>

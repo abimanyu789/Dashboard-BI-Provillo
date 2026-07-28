@@ -29,6 +29,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    stockLevelBadgeClass,
+    stockLevelFilterOptions,
+    stockLevelLabel,
+    stockLevelStatus,
+} from '@/lib/utils';
+import type { StockLevelStatus } from '@/lib/utils';
 import bomCategorie from '@/routes/bom-categorie';
 import produk from '@/routes/produk';
 import type { ProdukIndexProps } from '@/types';
@@ -36,6 +43,7 @@ import type { ProdukIndexProps } from '@/types';
 export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
     const [search, setSearch] = useState(filters.search ?? '');
     const [bom, setBom] = useState(filters.bom ?? '');
+    const [stockStatus, setStockStatus] = useState(filters.stock_status ?? '');
 
     const sortBy = filters.sort_by || 'created_at';
     const sortDir = filters.sort_dir || 'desc';
@@ -46,6 +54,7 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
         | 'ukuran'
         | 'warna'
         | 'harga_jual'
+        | 'stok'
         | 'created_at';
 
     const navigate = (overrides: Record<string, unknown> = {}) => {
@@ -54,6 +63,7 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
             {
                 search,
                 bom: bom || undefined,
+                stock_status: stockStatus || undefined,
                 sort_by: sortBy,
                 sort_dir: sortDir,
                 ...overrides,
@@ -68,10 +78,12 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
     };
 
     const SortIcon = ({ column }: { column: SortableColumn }) => {
-        if (sortBy !== column)
+        if (sortBy !== column) {
             return (
                 <ChevronsUpDown className="ml-1 inline size-3.5 text-muted-foreground/50" />
             );
+        }
+
         return sortDir === 'asc' ? (
             <ChevronUp className="ml-1 inline size-3.5" />
         ) : (
@@ -104,8 +116,17 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
         navigate({ bom: newBom || undefined });
     };
 
+    const handleStockStatusFilter = (value: string) => {
+        const next = value === 'semua' ? '' : value;
+        setStockStatus(next);
+        navigate({ stock_status: next || undefined });
+    };
+
     const formatHarga = (value: number | null) => {
-        if (value === null) return '-';
+        if (value === null) {
+            return '-';
+        }
+
         return new Intl.NumberFormat('id-ID', {
             style: 'currency',
             currency: 'IDR',
@@ -114,7 +135,18 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
         }).format(value);
     };
 
-    const activeFilterCount = [bom].filter(Boolean).length;
+    const formatStok = (value: number) =>
+        new Intl.NumberFormat('id-ID', {
+            maximumFractionDigits: 0,
+        }).format(value);
+
+    const stockStatusBadge = (status: StockLevelStatus) => (
+        <span className={stockLevelBadgeClass(status)}>
+            {stockLevelLabel(status)}
+        </span>
+    );
+
+    const activeFilterCount = [bom, stockStatus].filter(Boolean).length;
 
     return (
         <>
@@ -133,7 +165,9 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                     </div>
                     <div className="flex gap-2">
                         <ExportImportMenu
-                            exportExcelUrl={produk.export.url() + '?format=excel'}
+                            exportExcelUrl={
+                                produk.export.url() + '?format=excel'
+                            }
                             exportPdfUrl={produk.export.url() + '?format=pdf'}
                             templateUrl={produk.template.url()}
                             importUrl={produk.import.url()}
@@ -192,6 +226,26 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                         </SelectContent>
                     </Select>
 
+                    {/* Filter Status Stok */}
+                    <Select
+                        value={stockStatus || 'semua'}
+                        onValueChange={handleStockStatusFilter}
+                    >
+                        <SelectTrigger className="w-44">
+                            <SelectValue placeholder="Semua status stok" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="semua">
+                                Semua Status Stok
+                            </SelectItem>
+                            {stockLevelFilterOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
                     {/* Reset filter */}
                     {activeFilterCount > 0 && (
                         <Button
@@ -200,7 +254,11 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                             className="text-muted-foreground"
                             onClick={() => {
                                 setBom('');
-                                navigate({ bom: undefined });
+                                setStockStatus('');
+                                navigate({
+                                    bom: undefined,
+                                    stock_status: undefined,
+                                });
                             }}
                         >
                             Reset filter ({activeFilterCount})
@@ -223,6 +281,14 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                                     'Harga Jual',
                                     'text-right',
                                 )}
+                                {sortableHead(
+                                    'stok',
+                                    'Stok Saat Ini',
+                                    'text-right',
+                                )}
+                                <TableHead className="text-center">
+                                    Status Stok
+                                </TableHead>
                                 <TableHead className="w-8 text-center">
                                     BOM
                                 </TableHead>
@@ -235,10 +301,12 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                             {produks.data.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={8}
+                                        colSpan={10}
                                         className="h-24 text-center"
                                     >
-                                        {filters.search || filters.bom
+                                        {filters.search ||
+                                        filters.bom ||
+                                        filters.stock_status
                                             ? 'Tidak ada data yang ditemukan.'
                                             : 'Belum ada data produk.'}
                                     </TableCell>
@@ -283,6 +351,17 @@ export default function ProdukIndex({ produks, filters }: ProdukIndexProps) {
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-sm">
                                                 {formatHarga(item.harga_jual)}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-sm">
+                                                {formatStok(item.stok)}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                {stockStatusBadge(
+                                                    stockLevelStatus(
+                                                        item.stok,
+                                                        item.minimum_stok,
+                                                    ),
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 {hasBom ? (

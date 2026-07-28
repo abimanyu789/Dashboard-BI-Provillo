@@ -546,12 +546,17 @@ class ProduksiService
 
     public function cekKecukupanStok(Produksi $produksi): bool
     {
-        if (! $this->hasValidBom($produksi)) {
+        $kebutuhan = $this->hitungKebutuhanBahan($produksi);
+
+        // Header status must match baris Kebutuhan Bahan Baku.
+        // Jangan campur dengan hasValidBom() — BOM invalid ditangani terpisah.
+        if ($kebutuhan === []) {
             return false;
         }
 
-        return collect($this->hitungKebutuhanBahan($produksi))
-            ->every(fn (array $bahan): bool => $bahan['cukup']);
+        return collect($kebutuhan)->every(
+            fn (array $bahan): bool => (bool) ($bahan['cukup'] ?? false),
+        );
     }
 
     public function hasValidBom(Produksi $produksi): bool

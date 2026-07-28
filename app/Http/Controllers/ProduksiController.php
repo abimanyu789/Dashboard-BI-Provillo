@@ -8,7 +8,6 @@ use App\Http\Requests\MaterialMovementRequest;
 use App\Http\Requests\ProduksiRequest;
 use App\Http\Requests\UpdateQcDispositionRequest;
 use App\Support\DomainLabels;
-use App\Models\BahanBaku;
 use App\Models\DetailProduksi;
 use App\Models\Karyawan;
 use App\Models\Pesanan;
@@ -252,9 +251,17 @@ class ProduksiController extends Controller
             'progressPerProduk' => $progressPerProduk,
             'produkBelumSelesai' => $produkBelumSelesai,
             'materialSummary' => $materialSummary,
-            'materialOptions' => BahanBaku::query()
-                ->orderBy('nama_bahan')
-                ->get(['id', 'kode_bahan', 'nama_bahan', 'satuan', 'stok']),
+            // Hanya bahan pada rencana BOM produksi ini — cegah issue bahan di luar kebutuhan.
+            'materialOptions' => collect($materialSummary)
+                ->map(fn (array $material): array => [
+                    'id' => $material['id'],
+                    'kode_bahan' => $material['kode_bahan'],
+                    'nama_bahan' => $material['nama_bahan'],
+                    'satuan' => $material['satuan'],
+                    'stok' => $material['available'],
+                ])
+                ->values()
+                ->all(),
             'activeRework' => $activeRework,
             'qcSummary' => $qcSummary,
             'wageBasis' => $this->service->wageBasis($produksi),

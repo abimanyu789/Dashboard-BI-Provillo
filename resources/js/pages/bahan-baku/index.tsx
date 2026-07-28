@@ -28,6 +28,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    stockLevelBadgeClass,
+    stockLevelFilterOptions,
+    stockLevelLabel,
+    stockLevelStatus,
+} from '@/lib/utils';
+import type { StockLevelStatus } from '@/lib/utils';
 import bahanBaku from '@/routes/bahan-baku';
 import type { BahanBakuIndexProps } from '@/types';
 
@@ -38,12 +45,18 @@ export default function BahanBakuIndex({
 }: BahanBakuIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [satuan, setSatuan] = useState(filters.satuan || '');
+    const [stockStatus, setStockStatus] = useState(filters.stock_status || '');
 
     const sortBy = filters.sort_by || 'created_at';
     const sortDir = filters.sort_dir || 'desc';
 
     type SortableColumn =
-        'kode_bahan' | 'nama_bahan' | 'satuan' | 'minimum_stok' | 'created_at';
+        | 'kode_bahan'
+        | 'nama_bahan'
+        | 'satuan'
+        | 'stok'
+        | 'minimum_stok'
+        | 'created_at';
 
     const navigate = (overrides: Record<string, unknown> = {}) => {
         router.get(
@@ -51,6 +64,7 @@ export default function BahanBakuIndex({
             {
                 search,
                 satuan: satuan || undefined,
+                stock_status: stockStatus || undefined,
                 sort_by: sortBy,
                 sort_dir: sortDir,
                 ...overrides,
@@ -70,6 +84,7 @@ export default function BahanBakuIndex({
                 <ChevronsUpDown className="ml-1 inline size-3.5 text-muted-foreground/50" />
             );
         }
+
         return sortDir === 'asc' ? (
             <ChevronUp className="ml-1 inline size-3.5" />
         ) : (
@@ -102,18 +117,31 @@ export default function BahanBakuIndex({
         navigate({ satuan: newSatuan || undefined });
     };
 
+    const handleStockStatusFilter = (value: string) => {
+        const next = value === 'semua' ? '' : value;
+        setStockStatus(next);
+        navigate({ stock_status: next || undefined });
+    };
+
     const formatNumber = (value: number | null) => {
         if (value === null) {
             return '-';
         }
+
         return new Intl.NumberFormat('id-ID', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         }).format(value);
     };
 
+    const stockStatusBadge = (status: StockLevelStatus) => (
+        <span className={stockLevelBadgeClass(status)}>
+            {stockLevelLabel(status)}
+        </span>
+    );
+
     // Hitung filter aktif untuk badge
-    const activeFilterCount = [satuan].filter(Boolean).length;
+    const activeFilterCount = [satuan, stockStatus].filter(Boolean).length;
 
     return (
         <>
@@ -186,6 +214,26 @@ export default function BahanBakuIndex({
                         </SelectContent>
                     </Select>
 
+                    {/* Filter Status Stok */}
+                    <Select
+                        value={stockStatus || 'semua'}
+                        onValueChange={handleStockStatusFilter}
+                    >
+                        <SelectTrigger className="w-44">
+                            <SelectValue placeholder="Semua Status Stok" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="semua">
+                                Semua Status Stok
+                            </SelectItem>
+                            {stockLevelFilterOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
                     {/* Reset filter */}
                     {activeFilterCount > 0 && (
                         <Button
@@ -194,7 +242,11 @@ export default function BahanBakuIndex({
                             className="text-muted-foreground"
                             onClick={() => {
                                 setSatuan('');
-                                navigate({ satuan: undefined });
+                                setStockStatus('');
+                                navigate({
+                                    satuan: undefined,
+                                    stock_status: undefined,
+                                });
                             }}
                         >
                             Reset filter ({activeFilterCount})
@@ -212,10 +264,18 @@ export default function BahanBakuIndex({
                                 {sortableHead('nama_bahan', 'Nama Bahan')}
                                 {sortableHead('satuan', 'Satuan')}
                                 {sortableHead(
+                                    'stok',
+                                    'Stok Saat Ini',
+                                    'text-right',
+                                )}
+                                {sortableHead(
                                     'minimum_stok',
                                     'Min. Stok',
                                     'text-right',
                                 )}
+                                <TableHead className="text-center">
+                                    Status Stok
+                                </TableHead>
                                 <TableHead className="w-32 text-center">
                                     Aksi
                                 </TableHead>
@@ -225,10 +285,12 @@ export default function BahanBakuIndex({
                             {bahanBakus.data.length === 0 ? (
                                 <TableRow>
                                     <TableCell
-                                        colSpan={6}
+                                        colSpan={8}
                                         className="h-24 text-center"
                                     >
-                                        {filters.search || filters.satuan
+                                        {filters.search ||
+                                        filters.satuan ||
+                                        filters.stock_status
                                             ? 'Tidak ada data yang ditemukan.'
                                             : 'Belum ada data bahan baku.'}
                                     </TableCell>
@@ -251,9 +313,20 @@ export default function BahanBakuIndex({
                                                     {item.satuan}
                                                 </span>
                                             </TableCell>
+                                            <TableCell className="text-right font-mono text-sm">
+                                                {formatNumber(item.stok)}
+                                            </TableCell>
                                             <TableCell className="text-right font-mono text-sm text-muted-foreground">
                                                 {formatNumber(
                                                     item.minimum_stok,
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                {stockStatusBadge(
+                                                    stockLevelStatus(
+                                                        item.stok,
+                                                        item.minimum_stok,
+                                                    ),
                                                 )}
                                             </TableCell>
                                             <TableCell>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProdukRequest;
 use App\Models\BomCategorie;
 use App\Models\Produk;
+use App\Support\StockLevel;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Exports\ProdukExport;
@@ -22,17 +23,22 @@ class ProdukController extends Controller
      */
     public function index(Request $request)
     {
-        $search  = $request->input('search');
-        $bom     = $request->input('bom'); // 'ada' | 'tidak'
-        $sortBy  = $request->input('sort_by', 'created_at');
+        $search = $request->input('search');
+        $bom = $request->input('bom'); // 'ada' | 'tidak'
+        $stockStatus = $request->input('stock_status');
+        $sortBy = $request->input('sort_by', 'created_at');
         $sortDir = $request->input('sort_dir', 'desc');
 
         // Whitelist kolom yang boleh di-sort
-        $allowedSorts = ['kode_produk', 'nama_produk', 'ukuran', 'warna', 'harga_jual', 'created_at'];
-        if (!in_array($sortBy, $allowedSorts)) {
+        $allowedSorts = ['kode_produk', 'nama_produk', 'ukuran', 'warna', 'harga_jual', 'stok', 'created_at'];
+        if (! in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'created_at';
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
+
+        if (! StockLevel::isValid(is_string($stockStatus) ? $stockStatus : null)) {
+            $stockStatus = null;
+        }
 
         $produks = Produk::query()
             ->when($search, function ($query, $search) {
@@ -48,6 +54,10 @@ class ProdukController extends Controller
             ->when($bom === 'tidak', function ($query) {
                 $query->whereNull('bom_category_id');
             })
+            ->when(
+                $stockStatus,
+                fn ($query) => StockLevel::applyFilter($query, is_string($stockStatus) ? $stockStatus : null),
+            )
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)
             ->withQueryString();
@@ -55,9 +65,10 @@ class ProdukController extends Controller
         return Inertia::render('produk/index', [
             'produks' => $produks,
             'filters' => [
-                'search'   => $search,
-                'bom'      => $bom,
-                'sort_by'  => $sortBy,
+                'search' => $search,
+                'bom' => $bom,
+                'stock_status' => $stockStatus,
+                'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
             ],
         ]);
