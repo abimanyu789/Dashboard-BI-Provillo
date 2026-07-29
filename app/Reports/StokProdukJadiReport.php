@@ -3,6 +3,7 @@
 namespace App\Reports;
 
 use App\Models\StokProdukJadi;
+use App\Support\DomainLabels;
 use Illuminate\Support\Collection;
 
 class StokProdukJadiReport extends BaseReport
@@ -41,19 +42,19 @@ class StokProdukJadiReport extends BaseReport
         [$dari, $sampai] = $this->parseDateFilters($filters);
 
         return StokProdukJadi::with('produk')
-            ->when($dari,   fn ($q) => $q->whereDate('created_at', '>=', $dari))
+            ->when($dari, fn ($q) => $q->whereDate('created_at', '>=', $dari))
             ->when($sampai, fn ($q) => $q->whereDate('created_at', '<=', $sampai))
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (StokProdukJadi $s) => [
-                'tanggal'         => $s->created_at?->format('d/m/Y'),
-                'nama_produk'     => $s->produk?->nama_produk ?? '-',
-                'kode_produk'     => $s->produk?->kode_produk ?? '-',
-                'jenis_transaksi'  => DomainLabels::stokProdukTransaksi($s->jenis_transaksi),
-                'qty'             => (int) $s->qty,
-                'stok_sebelum'    => (int) $s->stok_sebelum,
-                'stok_sesudah'    => (int) $s->stok_sesudah,
-                'keterangan'      => $s->keterangan,
+                'tanggal' => $s->created_at?->format('d/m/Y'),
+                'nama_produk' => $s->produk?->nama_produk ?? '-',
+                'kode_produk' => $s->produk?->kode_produk ?? '-',
+                'jenis_transaksi' => DomainLabels::stokProdukTransaksi($s->jenis_transaksi),
+                'qty' => (int) $s->qty,
+                'stok_sebelum' => (int) $s->stok_sebelum,
+                'stok_sesudah' => (int) $s->stok_sesudah,
+                'keterangan' => $s->keterangan,
             ]);
     }
 
@@ -62,12 +63,12 @@ class StokProdukJadiReport extends BaseReport
         [$dari, $sampai] = $this->parseDateFilters($filters);
 
         $query = StokProdukJadi::query()
-            ->when($dari,   fn ($q) => $q->whereDate('created_at', '>=', $dari))
+            ->when($dari, fn ($q) => $q->whereDate('created_at', '>=', $dari))
             ->when($sampai, fn ($q) => $q->whereDate('created_at', '<=', $sampai));
 
-        $masuk  = (clone $query)->where('jenis_transaksi', 'masuk')->sum('qty');
+        $masuk = (clone $query)->where('jenis_transaksi', 'masuk')->sum('qty');
         $keluar = (clone $query)->where('jenis_transaksi', 'keluar')->sum('qty');
-        $total  = (clone $query)->count();
+        $total = (clone $query)->count();
 
         return [
             ['label' => 'Total Transaksi', 'value' => $total,  'color' => 'blue'],

@@ -12,6 +12,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { jenisPembayaranPesananLabel } from '@/lib/domain-labels';
 import type {
     CustomerOption,
     PesananFormData,
@@ -190,14 +191,20 @@ export function PesananForm({
                                     Belum ditentukan
                                 </SelectItem>
                                 <SelectItem value="dp">
-                                    DP (Down Payment)
+                                    {jenisPembayaranPesananLabel('dp')}
                                 </SelectItem>
-                                <SelectItem value="lunas">Lunas</SelectItem>
+                                <SelectItem value="lunas">
+                                    {jenisPembayaranPesananLabel('lunas')}
+                                </SelectItem>
                                 <SelectItem value="bertahap">
-                                    Bertahap
+                                    {jenisPembayaranPesananLabel('bertahap')}
                                 </SelectItem>
-                                <SelectItem value="cod">COD</SelectItem>
-                                <SelectItem value="termin">Termin</SelectItem>
+                                <SelectItem value="cod">
+                                    {jenisPembayaranPesananLabel('cod')}
+                                </SelectItem>
+                                <SelectItem value="termin">
+                                    {jenisPembayaranPesananLabel('termin')}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                         {errors.jenis_pembayaran && (

@@ -21,6 +21,14 @@ final class DomainLabels
     /**
      * @var array<string, string>
      */
+    public const JENIS_PRODUKSI = [
+        'pesanan' => 'Pesanan',
+        'restok' => 'Restok',
+    ];
+
+    /**
+     * @var array<string, string>
+     */
     public const MATERIAL_MOVEMENT = [
         'planned' => 'Rencana Kebutuhan',
         'issued' => 'Bahan Dikeluarkan',
@@ -81,9 +89,94 @@ final class DomainLabels
         'penyesuaian' => 'Penyesuaian Stok',
     ];
 
+    /**
+     * @var array<string, string>
+     */
+    public const PESANAN_STATUS = [
+        'pending' => 'Menunggu',
+        'proses' => 'Diproses',
+        'selesai' => 'Selesai',
+        'dibatalkan' => 'Dibatalkan',
+    ];
+
+    /**
+     * Status bayar turunan (bukan kolom enum pesanan).
+     *
+     * @var array<string, string>
+     */
+    public const STATUS_PEMBAYARAN = [
+        'belum_bayar' => 'Belum Bayar',
+        'sebagian' => 'Sebagian',
+        'lunas' => 'Lunas',
+    ];
+
+    /**
+     * Progress pengiriman per item pesanan.
+     *
+     * @var array<string, string>
+     */
+    public const STATUS_PENGIRIMAN = [
+        'belum' => 'Belum',
+        'sebagian' => 'Sebagian',
+        'lengkap' => 'Lengkap',
+    ];
+
+    /**
+     * Jenis pembayaran di header pesanan.
+     *
+     * @var array<string, string>
+     */
+    public const JENIS_PEMBAYARAN_PESANAN = [
+        'dp' => 'DP (Down Payment)',
+        'lunas' => 'Lunas',
+        'bertahap' => 'Bertahap',
+        'cod' => 'COD',
+        'termin' => 'Termin',
+    ];
+
+    /**
+     * Jenis transaksi pembayaran (baris pembayaran).
+     *
+     * @var array<string, string>
+     */
+    public const JENIS_PEMBAYARAN = [
+        'dp' => 'DP (Down Payment)',
+        'pelunasan' => 'Pelunasan',
+        'termin' => 'Termin',
+    ];
+
+    /**
+     * @var array<string, string>
+     */
+    public const JENIS_CUSTOMER = [
+        'b2b' => 'B2B',
+        'b2c' => 'B2C',
+    ];
+
+    /**
+     * @var array<string, string>
+     */
+    public const STATUS_KARYAWAN = [
+        'aktif' => 'Aktif',
+        'nonaktif' => 'Nonaktif',
+    ];
+
+    /**
+     * @var array<string, string>
+     */
+    public const JENIS_ARUS_KAS = [
+        'pemasukan' => 'Pemasukan',
+        'pengeluaran' => 'Pengeluaran',
+    ];
+
     public static function produksiStatus(string $value): string
     {
         return self::PRODUKSI_STATUS[$value] ?? $value;
+    }
+
+    public static function jenisProduksi(string $value): string
+    {
+        return self::JENIS_PRODUKSI[$value] ?? $value;
     }
 
     public static function materialMovement(string $value): string
@@ -114,6 +207,46 @@ final class DomainLabels
     public static function stokProdukTransaksi(string $value): string
     {
         return self::STOK_PRODUK_TRANSAKSI[$value] ?? $value;
+    }
+
+    public static function pesananStatus(string $value): string
+    {
+        return self::PESANAN_STATUS[$value] ?? $value;
+    }
+
+    public static function statusPembayaran(string $value): string
+    {
+        return self::STATUS_PEMBAYARAN[$value] ?? $value;
+    }
+
+    public static function statusPengiriman(string $value): string
+    {
+        return self::STATUS_PENGIRIMAN[$value] ?? $value;
+    }
+
+    public static function jenisPembayaranPesanan(string $value): string
+    {
+        return self::JENIS_PEMBAYARAN_PESANAN[$value] ?? $value;
+    }
+
+    public static function jenisPembayaran(string $value): string
+    {
+        return self::JENIS_PEMBAYARAN[$value] ?? $value;
+    }
+
+    public static function jenisCustomer(string $value): string
+    {
+        return self::JENIS_CUSTOMER[$value] ?? $value;
+    }
+
+    public static function statusKaryawan(string $value): string
+    {
+        return self::STATUS_KARYAWAN[$value] ?? $value;
+    }
+
+    public static function jenisArusKas(string $value): string
+    {
+        return self::JENIS_ARUS_KAS[$value] ?? $value;
     }
 
     /**

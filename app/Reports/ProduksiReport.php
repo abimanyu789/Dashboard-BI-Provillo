@@ -42,19 +42,19 @@ class ProduksiReport extends BaseReport
         [$dari, $sampai] = $this->parseDateFilters($filters);
 
         return Produksi::with('pesanan')
-            ->when($dari,   fn ($q) => $q->whereDate('deadline', '>=', $dari))
+            ->when($dari, fn ($q) => $q->whereDate('deadline', '>=', $dari))
             ->when($sampai, fn ($q) => $q->whereDate('deadline', '<=', $sampai))
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (Produksi $p) => [
-                'id'             => $p->id,
-                'nomor_pesanan'  => $p->pesanan?->nomor_pesanan ?? 'Mandiri',
-                'jenis_produksi' => $p->jenis_produksi,
-                'deadline'       => $p->deadline?->format('d/m/Y'),
-                'qty_target'     => $p->qty_target,
-                'qty_selesai'    => $p->qty_selesai,
-                'status'         => DomainLabels::produksiStatus($p->status),
-                'status_qc'      => $p->status_qc ? DomainLabels::qcStatus($p->status_qc) : '-',
+                'id' => $p->id,
+                'nomor_pesanan' => $p->pesanan?->nomor_pesanan ?? 'Mandiri',
+                'jenis_produksi' => DomainLabels::jenisProduksi($p->jenis_produksi),
+                'deadline' => $p->deadline?->format('d/m/Y'),
+                'qty_target' => $p->qty_target,
+                'qty_selesai' => $p->qty_selesai,
+                'status' => DomainLabels::produksiStatus($p->status),
+                'status_qc' => $p->status_qc ? DomainLabels::qcStatus($p->status_qc) : '-',
             ]);
     }
 
@@ -63,14 +63,14 @@ class ProduksiReport extends BaseReport
         [$dari, $sampai] = $this->parseDateFilters($filters);
 
         $query = Produksi::query()
-            ->when($dari,   fn ($q) => $q->whereDate('deadline', '>=', $dari))
+            ->when($dari, fn ($q) => $q->whereDate('deadline', '>=', $dari))
             ->when($sampai, fn ($q) => $q->whereDate('deadline', '<=', $sampai));
 
-        $total      = $query->count();
-        $selesai    = (clone $query)->where('status', 'selesai')->count();
-        $proses     = (clone $query)->where('status', 'proses')->count();
-        $draft      = (clone $query)->where('status', 'draft')->count();
-        $totalUnit  = (clone $query)->sum('qty_selesai');
+        $total = $query->count();
+        $selesai = (clone $query)->where('status', 'selesai')->count();
+        $proses = (clone $query)->where('status', 'proses')->count();
+        $draft = (clone $query)->where('status', 'draft')->count();
+        $totalUnit = (clone $query)->sum('qty_selesai');
 
         return [
             ['label' => 'Total Produksi',  'value' => $total,      'color' => 'blue'],

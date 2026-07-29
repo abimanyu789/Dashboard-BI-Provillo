@@ -24,6 +24,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { jenisProduksiLabel, qcStatusLabel } from '@/lib/domain-labels';
 import pesanan from '@/routes/pesanan';
 import produksiRoute from '@/routes/produksi';
 import type { KebutuhanBahan, ProduksiShowProps } from '@/types';
@@ -39,6 +40,7 @@ export default function ProduksiShow({
     activeRework,
     qcSummary,
     wageBasis,
+    completionBlockers = [],
 }: ProduksiShowProps) {
     const formatDate = (s: string | null) => {
         if (!s) {
@@ -77,13 +79,8 @@ export default function ProduksiShow({
         .reduce((s, d) => s + d.qty_selesai, 0);
     const totalTidakLolos = totalProgress - totalLolos;
 
-    const hasUnresolvedFailedQc = (item.detail_produksi ?? []).some(
-        (detail) =>
-            detail.qc_status === 'tidak_lolos' && detail.disposisi_qc === null,
-    );
-    const hasUnbalancedMaterial = materialSummary.some(
-        (material) => material.returnable > 0,
-    );
+    // Banner informatif di tengah proses (bukan sumber kebenaran tombol Selesai).
+    // Tombol Selesai + checklist memakai completionBlockers dari backend.
     const hasMaterialShortage = materialSummary.some(
         (material) => material.shortage > 0.00001,
     );
@@ -95,21 +92,6 @@ export default function ProduksiShow({
 
         return remaining > 0.00001;
     });
-    const targetNotMet = item.qty_selesai < item.qty_target;
-    const completionBlockers = [
-        targetNotMet
-            ? `Jumlah lolos QC belum mencapai target (${item.qty_selesai} / ${item.qty_target} pcs).`
-            : null,
-        hasUnresolvedFailedQc
-            ? 'Masih ada hasil Tidak Lolos Pemeriksaan tanpa disposisi.'
-            : null,
-        activeRework.length > 0
-            ? 'Masih ada antrean Perbaikan Ulang (rework) aktif.'
-            : null,
-        hasUnbalancedMaterial
-            ? 'Masih ada bahan yang sudah dikeluarkan tetapi belum ditandai terpakai atau dikembalikan.'
-            : null,
-    ].filter((reason): reason is string => reason !== null);
     const isSelesaiEnabled =
         item.status === 'proses' && completionBlockers.length === 0;
 
@@ -135,9 +117,12 @@ export default function ProduksiShow({
                             <div className="mt-1 flex items-center gap-2">
                                 <ProduksiStatusBadge status={item.status} />
                                 <span className="text-sm text-muted-foreground">
+                                    {jenisProduksiLabel(item.jenis_produksi)}
                                     {item.jenis_produksi === 'pesanan'
                                         ? item.pesanan?.nomor_pesanan
-                                        : `Restok #${item.id}`}
+                                            ? ` · ${item.pesanan.nomor_pesanan}`
+                                            : ''
+                                        : ` · #${item.id}`}
                                 </span>
                             </div>
                         </div>
@@ -537,11 +522,7 @@ export default function ProduksiShow({
                                           : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                                 }`}
                             >
-                                {item.status_qc === 'belum_dicek' &&
-                                    'Belum Dicek'}
-                                {item.status_qc === 'lolos' && 'Lolos QC'}
-                                {item.status_qc === 'tidak_lolos' &&
-                                    'Tidak Lolos'}
+                                {qcStatusLabel(item.status_qc)}
                             </span>
                         </div>
 

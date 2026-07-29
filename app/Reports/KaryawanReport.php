@@ -4,6 +4,7 @@ namespace App\Reports;
 
 use App\Models\DetailProduksi;
 use App\Models\Karyawan;
+use App\Support\DomainLabels;
 use Illuminate\Support\Collection;
 
 class KaryawanReport extends BaseReport
@@ -69,7 +70,7 @@ class KaryawanReport extends BaseReport
                 'nama_karyawan' => $k->nama_karyawan,
                 'jabatan' => $k->jabatan ?? '-',
                 'no_hp' => $k->no_hp ?? '-',
-                'status' => $k->status,
+                'status' => DomainLabels::statusKaryawan($k->status),
                 'total_produksi' => $k->produksis_count,
                 'wage_basis_qty' => (int) ($k->wage_basis_qty ?? 0),
                 'failed_qc_qty' => (int) ($k->failed_qc_qty ?? 0),

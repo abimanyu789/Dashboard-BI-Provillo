@@ -7,7 +7,6 @@ use App\Http\Requests\InputProgressRequest;
 use App\Http\Requests\MaterialMovementRequest;
 use App\Http\Requests\ProduksiRequest;
 use App\Http\Requests\UpdateQcDispositionRequest;
-use App\Support\DomainLabels;
 use App\Models\DetailProduksi;
 use App\Models\Karyawan;
 use App\Models\Pesanan;
@@ -15,6 +14,7 @@ use App\Models\Produk;
 use App\Models\Produksi;
 use App\Services\ProduksiMaterialService;
 use App\Services\ProduksiService;
+use App\Support\DomainLabels;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -244,6 +244,12 @@ class ProduksiController extends Controller
             ])
             ->values();
 
+        // Blocker penyelesaian dari service yang sama dengan guard backend.
+        // Draft/selesai/batal tidak perlu checklist aksi Selesai.
+        $completionBlockers = $produksi->isProses()
+            ? $this->service->completionBlockers($produksi)
+            : [];
+
         return Inertia::render('produksi/show', [
             'produksi' => $produksi,
             'kebutuhanBahan' => $kebutuhanBahan,
@@ -251,6 +257,7 @@ class ProduksiController extends Controller
             'progressPerProduk' => $progressPerProduk,
             'produkBelumSelesai' => $produkBelumSelesai,
             'materialSummary' => $materialSummary,
+            'completionBlockers' => $completionBlockers,
             // Hanya bahan pada rencana BOM produksi ini — cegah issue bahan di luar kebutuhan.
             'materialOptions' => collect($materialSummary)
                 ->map(fn (array $material): array => [

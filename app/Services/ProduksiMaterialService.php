@@ -7,6 +7,7 @@ use App\Models\Produksi;
 use App\Models\ProduksiPemakaianBahan;
 use App\Services\Inventory\StockBahanBakuService;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class ProduksiMaterialService
@@ -116,9 +117,37 @@ class ProduksiMaterialService
 
             $movements = [];
 
+            // request_key = korelasi batch di klien (anti double-submit FE).
+            // Idempotensi authoritative per baris memakai items.*.idempotency_key
+            // agar retry/replay aman tanpa mengulang potongan stok.
             foreach ($items as $item) {
                 $bahanId = $item['bahan_baku_id'];
                 $qty = $item['qty'];
+                $idempotencyKey = $item['idempotency_key'];
+
+                // Cek replay dulu: validasi sisa rencana/stok hanya untuk item baru.
+                // Tanpa ini, retry setelah sukses (kunci sama) ditolak karena shortage sudah 0.
+                $existing = ProduksiPemakaianBahan::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing !== null) {
+                    $matchesOriginal = (int) $existing->produksi_id === (int) $lockedProduksi->id
+                        && (int) $existing->bahan_baku_id === $bahanId
+                        && $existing->movement_type === 'issued'
+                        && abs((float) $existing->qty - $qty) <= self::STOCK_EPSILON;
+
+                    if (! $matchesOriginal) {
+                        throw new \RuntimeException(
+                            'Kunci idempotensi sudah digunakan untuk pergerakan yang berbeda.'
+                        );
+                    }
+
+                    $movements[] = $existing->load(['bahanBaku', 'createdBy', 'stokHistory']);
+
+                    continue;
+                }
+
                 $summary = $summaryById->get($bahanId);
                 $planned = (float) ($summary['planned'] ?? 0);
                 $netIssued = max(
@@ -158,8 +187,7 @@ class ProduksiMaterialService
                     'qty' => $qty,
                     'tanggal' => $data['tanggal'],
                     'keterangan' => $keterangan,
-                    // Prefix deterministik agar request massal dapat diulang aman per batch.
-                    'idempotency_key' => $item['idempotency_key'],
+                    'idempotency_key' => $idempotencyKey,
                 ], $userId);
             }
 
@@ -248,16 +276,40 @@ class ProduksiMaterialService
                 }
             }
 
-            $movement = ProduksiPemakaianBahan::query()->create([
-                'produksi_id' => $lockedProduksi->id,
-                'bahan_baku_id' => $bahanBaku->id,
-                'movement_type' => $movementType,
-                'qty' => $qty,
-                'tanggal' => $data['tanggal'],
-                'keterangan' => $data['keterangan'] ?? null,
-                'created_by' => $userId,
-                'idempotency_key' => $data['idempotency_key'],
-            ]);
+            try {
+                $movement = ProduksiPemakaianBahan::query()->create([
+                    'produksi_id' => $lockedProduksi->id,
+                    'bahan_baku_id' => $bahanBaku->id,
+                    'movement_type' => $movementType,
+                    'qty' => $qty,
+                    'tanggal' => $data['tanggal'],
+                    'keterangan' => $data['keterangan'] ?? null,
+                    'created_by' => $userId,
+                    'idempotency_key' => $data['idempotency_key'],
+                ]);
+            } catch (UniqueConstraintViolationException $e) {
+                // Race concurrent dengan kunci yang sama: anggap replay aman bila payload cocok.
+                $raced = ProduksiPemakaianBahan::query()
+                    ->where('idempotency_key', $data['idempotency_key'])
+                    ->first();
+
+                if ($raced === null) {
+                    throw $e;
+                }
+
+                $matchesOriginal = (int) $raced->produksi_id === (int) $produksi->id
+                    && (int) $raced->bahan_baku_id === (int) $data['bahan_baku_id']
+                    && $raced->movement_type === $data['movement_type']
+                    && abs((float) $raced->qty - (float) $data['qty']) <= self::STOCK_EPSILON;
+
+                if (! $matchesOriginal) {
+                    throw new \RuntimeException(
+                        'Kunci idempotensi sudah digunakan untuk pergerakan yang berbeda.'
+                    );
+                }
+
+                return $raced->load(['bahanBaku', 'createdBy', 'stokHistory']);
+            }
 
             $this->applyStockEffect($movement, $bahanBaku, $userId);
 
@@ -351,22 +403,56 @@ class ProduksiMaterialService
             ->contains(fn (array $material): bool => $material['shortage'] > self::STOCK_EPSILON);
     }
 
-    public function assertConsistent(Produksi $produksi): void
+    /**
+     * Alasan terkait bahan yang menghalangi penyelesaian produksi.
+     * Semua item dikumpulkan agar checklist menampilkan seluruh bahan bermasalah.
+     *
+     * Catatan: sisa rencana (shortage) memblokir selesai, tetapi deviasi konsumsi
+     * aktual terhadap BOM di luar rencana TIDAK diblokir di sini (toleransi belum
+     * ditetapkan — lihat final-interview-unresolved-decisions).
+     *
+     * @return list<string>
+     */
+    public function completionMaterialBlockers(Produksi $produksi): array
     {
+        $blockers = [];
+
         foreach ($this->materialSummary($produksi) as $material) {
+            $nama = $material['nama_bahan'];
+            $satuan = $material['satuan'] !== '' ? ' '.$material['satuan'] : '';
+
             if ($material['consumed'] - ($material['issued'] - $material['returned']) > self::STOCK_EPSILON) {
-                throw new \RuntimeException(
-                    "Pergerakan bahan {$material['nama_bahan']} tidak konsisten: konsumsi melebihi bahan terbit bersih."
-                );
+                $blockers[] = "Pergerakan bahan {$nama} tidak konsisten: konsumsi melebihi bahan terbit bersih.";
             }
 
             if ($material['returnable'] > self::STOCK_EPSILON) {
-                throw new \RuntimeException(
-                    "Produksi belum dapat diselesaikan karena {$material['nama_bahan']} masih memiliki "
-                    ."{$material['returnable']} {$material['satuan']} bahan terbit yang belum digunakan atau dikembalikan."
-                );
+                $qty = $this->formatQty($material['returnable']);
+                $blockers[] = "{$nama} masih memiliki {$qty}{$satuan} bahan terbit yang belum digunakan atau dikembalikan.";
+            }
+
+            if ($material['shortage'] > self::STOCK_EPSILON) {
+                $qty = $this->formatQty($material['shortage']);
+                $blockers[] = "Rencana bahan {$nama} belum terpenuhi (sisa {$qty}{$satuan}).";
             }
         }
+
+        return $blockers;
+    }
+
+    public function assertConsistent(Produksi $produksi): void
+    {
+        $blockers = $this->completionMaterialBlockers($produksi);
+
+        if ($blockers !== []) {
+            throw new \RuntimeException($blockers[0]);
+        }
+    }
+
+    private function formatQty(float $qty): string
+    {
+        $formatted = rtrim(rtrim(number_format($qty, 5, '.', ''), '0'), '.');
+
+        return $formatted === '' ? '0' : $formatted;
     }
 
     private function assertMovementAllowed(

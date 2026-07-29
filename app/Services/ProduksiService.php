@@ -461,10 +461,8 @@ class ProduksiService
             $blockers[] = 'Masih ada antrean Perbaikan Ulang (rework) aktif.';
         }
 
-        try {
-            $this->materialService->assertConsistent($produksi);
-        } catch (\RuntimeException $e) {
-            $blockers[] = $e->getMessage();
+        foreach ($this->materialService->completionMaterialBlockers($produksi) as $materialBlocker) {
+            $blockers[] = $materialBlocker;
         }
 
         $negativeStockExists = BahanBaku::query()->where('stok', '<', 0)->exists()

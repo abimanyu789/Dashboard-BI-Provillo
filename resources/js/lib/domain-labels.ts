@@ -1,10 +1,19 @@
 import type {
+    JenisArusKas,
+    JenisCustomer,
+    JenisPembayaran,
+    JenisPembayaranPesanan,
+    JenisProduksi,
     JenisTransaksiProduk,
     JenisTransaksiStok,
     MaterialMovementType,
     MaterialStatus,
     QcDisposition,
     QcStatus,
+    StatusKaryawan,
+    StatusPembayaran,
+    StatusPengirimanItem,
+    StatusPesanan,
     StatusProduksi,
 } from '@/types';
 
@@ -13,6 +22,11 @@ export const produksiStatusLabels: Record<StatusProduksi, string> = {
     proses: 'Sedang Diproduksi',
     selesai: 'Selesai',
     dibatalkan: 'Dibatalkan',
+};
+
+export const jenisProduksiLabels: Record<JenisProduksi, string> = {
+    pesanan: 'Pesanan',
+    restok: 'Restok',
 };
 
 export const materialMovementLabels: Record<MaterialMovementType, string> = {
@@ -60,8 +74,63 @@ export const stokProdukTransaksiLabels: Record<JenisTransaksiProduk, string> = {
     penyesuaian: 'Penyesuaian Stok',
 };
 
+export const pesananStatusLabels: Record<StatusPesanan, string> = {
+    pending: 'Menunggu',
+    proses: 'Diproses',
+    selesai: 'Selesai',
+    dibatalkan: 'Dibatalkan',
+};
+
+export const statusPembayaranLabels: Record<StatusPembayaran, string> = {
+    belum_bayar: 'Belum Bayar',
+    sebagian: 'Sebagian',
+    lunas: 'Lunas',
+};
+
+export const statusPengirimanLabels: Record<StatusPengirimanItem, string> = {
+    belum: 'Belum',
+    sebagian: 'Sebagian',
+    lengkap: 'Lengkap',
+};
+
+export const jenisPembayaranPesananLabels: Record<
+    JenisPembayaranPesanan,
+    string
+> = {
+    dp: 'DP (Down Payment)',
+    lunas: 'Lunas',
+    bertahap: 'Bertahap',
+    cod: 'COD',
+    termin: 'Termin',
+};
+
+export const jenisPembayaranLabels: Record<JenisPembayaran, string> = {
+    dp: 'DP (Down Payment)',
+    pelunasan: 'Pelunasan',
+    termin: 'Termin',
+};
+
+export const jenisCustomerLabels: Record<JenisCustomer, string> = {
+    b2b: 'B2B',
+    b2c: 'B2C',
+};
+
+export const statusKaryawanLabels: Record<StatusKaryawan, string> = {
+    aktif: 'Aktif',
+    nonaktif: 'Nonaktif',
+};
+
+export const jenisArusKasLabels: Record<JenisArusKas, string> = {
+    pemasukan: 'Pemasukan',
+    pengeluaran: 'Pengeluaran',
+};
+
 export function produksiStatusLabel(value: StatusProduksi | string): string {
     return produksiStatusLabels[value as StatusProduksi] ?? String(value);
+}
+
+export function jenisProduksiLabel(value: JenisProduksi | string): string {
+    return jenisProduksiLabels[value as JenisProduksi] ?? String(value);
 }
 
 export function materialMovementLabel(
@@ -101,6 +170,49 @@ export function stokProdukTransaksiLabel(
         stokProdukTransaksiLabels[value as JenisTransaksiProduk] ??
         String(value)
     );
+}
+
+export function pesananStatusLabel(value: StatusPesanan | string): string {
+    return pesananStatusLabels[value as StatusPesanan] ?? String(value);
+}
+
+export function statusPembayaranLabel(
+    value: StatusPembayaran | string,
+): string {
+    return statusPembayaranLabels[value as StatusPembayaran] ?? String(value);
+}
+
+export function statusPengirimanLabel(
+    value: StatusPengirimanItem | string,
+): string {
+    return (
+        statusPengirimanLabels[value as StatusPengirimanItem] ?? String(value)
+    );
+}
+
+export function jenisPembayaranPesananLabel(
+    value: JenisPembayaranPesanan | string,
+): string {
+    return (
+        jenisPembayaranPesananLabels[value as JenisPembayaranPesanan] ??
+        String(value)
+    );
+}
+
+export function jenisPembayaranLabel(value: JenisPembayaran | string): string {
+    return jenisPembayaranLabels[value as JenisPembayaran] ?? String(value);
+}
+
+export function jenisCustomerLabel(value: JenisCustomer | string): string {
+    return jenisCustomerLabels[value as JenisCustomer] ?? String(value);
+}
+
+export function statusKaryawanLabel(value: StatusKaryawan | string): string {
+    return statusKaryawanLabels[value as StatusKaryawan] ?? String(value);
+}
+
+export function jenisArusKasLabel(value: JenisArusKas | string): string {
+    return jenisArusKasLabels[value as JenisArusKas] ?? String(value);
 }
 
 export function sumberStokBahanLabel(

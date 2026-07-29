@@ -20,6 +20,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { pesananStatusLabel } from '@/lib/domain-labels';
 import pesanan from '@/routes/pesanan';
 import type { PesananIndexProps, StatusPesanan } from '@/types';
 
@@ -143,10 +144,18 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="semua">Semua Status</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="proses">Proses</SelectItem>
-                            <SelectItem value="selesai">Selesai</SelectItem>
-                            <SelectItem value="dibatalkan">Dibatalkan</SelectItem>
+                            <SelectItem value="pending">
+                                {pesananStatusLabel('pending')}
+                            </SelectItem>
+                            <SelectItem value="proses">
+                                {pesananStatusLabel('proses')}
+                            </SelectItem>
+                            <SelectItem value="selesai">
+                                {pesananStatusLabel('selesai')}
+                            </SelectItem>
+                            <SelectItem value="dibatalkan">
+                                {pesananStatusLabel('dibatalkan')}
+                            </SelectItem>
                         </SelectContent>
                     </Select>
 

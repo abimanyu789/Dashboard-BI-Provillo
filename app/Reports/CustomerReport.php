@@ -3,6 +3,7 @@
 namespace App\Reports;
 
 use App\Models\Customer;
+use App\Support\DomainLabels;
 use Illuminate\Support\Collection;
 
 class CustomerReport extends BaseReport
@@ -39,18 +40,20 @@ class CustomerReport extends BaseReport
             ->orderBy('nama_customer')
             ->get()
             ->map(fn (Customer $c) => [
-                'nama_customer'   => $c->nama_customer,
-                'jenis_customer'  => $c->jenis_customer ?? '-',
-                'no_hp'           => $c->no_hp ?? '-',
-                'alamat'          => $c->alamat ?? '-',
-                'total_pesanan'   => $c->pesanans_count,
+                'nama_customer' => $c->nama_customer,
+                'jenis_customer' => $c->jenis_customer
+                    ? DomainLabels::jenisCustomer($c->jenis_customer)
+                    : '-',
+                'no_hp' => $c->no_hp ?? '-',
+                'alamat' => $c->alamat ?? '-',
+                'total_pesanan' => $c->pesanans_count,
             ]);
     }
 
     public function summary(array $filters): array
     {
-        $total  = Customer::count();
-        $aktif  = Customer::whereHas('pesanans')->count();
+        $total = Customer::count();
+        $aktif = Customer::whereHas('pesanans')->count();
 
         return [
             ['label' => 'Total Customer',   'value' => $total, 'color' => 'blue'],

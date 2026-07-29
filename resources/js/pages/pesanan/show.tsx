@@ -21,6 +21,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    jenisPembayaranLabel,
+    jenisPembayaranPesananLabel,
+    pesananStatusLabel,
+    statusPembayaranLabel,
+    statusPengirimanLabel,
+} from '@/lib/domain-labels';
 import pembayaran from '@/routes/pembayaran';
 import pesanan from '@/routes/pesanan';
 import type {
@@ -31,22 +38,16 @@ import type {
     StatusPesanan,
 } from '@/types';
 
-const statusBayarConfig: Record<
-    StatusPembayaran,
-    { label: string; className: string }
-> = {
+const statusBayarConfig: Record<StatusPembayaran, { className: string }> = {
     belum_bayar: {
-        label: 'Belum bayar',
         className:
             'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400',
     },
     sebagian: {
-        label: 'Sebagian',
         className:
             'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400',
     },
     lunas: {
-        label: 'Lunas',
         className:
             'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400',
     },
@@ -54,20 +55,17 @@ const statusBayarConfig: Record<
 
 const statusKirimConfig: Record<
     ProgressPengirimanItem['status'],
-    { label: string; className: string }
+    { className: string }
 > = {
     belum: {
-        label: 'Belum',
         className:
             'inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground',
     },
     sebagian: {
-        label: 'Sebagian',
         className:
             'inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400',
     },
     lengkap: {
-        label: 'Lengkap',
         className:
             'inline-flex items-center rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400',
     },
@@ -110,15 +108,7 @@ export default function PesananShow({
         );
     };
 
-    const statusLabels: Record<StatusPesanan, string> = {
-        pending: 'Pending',
-        proses: 'Proses',
-        selesai: 'Selesai',
-        dibatalkan: 'Dibatalkan',
-    };
-
-    const isLocked =
-        item.status === 'selesai' || item.status === 'dibatalkan';
+    const isLocked = item.status === 'selesai' || item.status === 'dibatalkan';
     const sisaTagihan = ringkasanPembayaran.sisa_tagihan;
     const canAddPayment = !isLocked && sisaTagihan > 0.009;
     const progressByProduk = new Map(
@@ -148,15 +138,14 @@ export default function PesananShow({
                                 <span
                                     className={
                                         statusBayarConfig[
-                                            ringkasanPembayaran.status_pembayaran
+                                            ringkasanPembayaran
+                                                .status_pembayaran
                                         ].className
                                     }
                                 >
-                                    {
-                                        statusBayarConfig[
-                                            ringkasanPembayaran.status_pembayaran
-                                        ].label
-                                    }
+                                    {statusPembayaranLabel(
+                                        ringkasanPembayaran.status_pembayaran,
+                                    )}
                                 </span>
                                 <span className="text-sm text-muted-foreground">
                                     {formatDate(item.tanggal)}
@@ -233,13 +222,9 @@ export default function PesananShow({
                                     </p>
                                     <p className="mt-1 font-medium">
                                         {item.jenis_pembayaran ? (
-                                            {
-                                                dp: 'DP (Down Payment)',
-                                                lunas: 'Lunas',
-                                                bertahap: 'Bertahap',
-                                                cod: 'COD',
-                                                termin: 'Termin',
-                                            }[item.jenis_pembayaran]
+                                            jenisPembayaranPesananLabel(
+                                                item.jenis_pembayaran,
+                                            )
                                         ) : (
                                             <span className="text-muted-foreground">
                                                 —
@@ -364,12 +349,9 @@ export default function PesananShow({
                                                                             .className
                                                                     }
                                                                 >
-                                                                    {
-                                                                        statusKirimConfig[
-                                                                            statusKirim
-                                                                        ]
-                                                                            .label
-                                                                    }
+                                                                    {statusPengirimanLabel(
+                                                                        statusKirim,
+                                                                    )}
                                                                 </span>
                                                                 <span className="text-xs text-muted-foreground">
                                                                     {percent}%
@@ -397,7 +379,7 @@ export default function PesananShow({
                         {/* Form & Riwayat Pembayaran */}
                         <div className="grid gap-6 md:grid-cols-3">
                             {canAddPayment && (
-                                <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 dark:border-sidebar-border md:col-span-1">
+                                <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 md:col-span-1 dark:border-sidebar-border">
                                     <h2 className="mb-1 text-sm font-semibold tracking-wider text-muted-foreground uppercase">
                                         Tambah Pembayaran
                                     </h2>
@@ -415,14 +397,14 @@ export default function PesananShow({
                             )}
 
                             {!canAddPayment && !isLocked && (
-                                <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 text-sm text-muted-foreground dark:border-sidebar-border md:col-span-1">
+                                <div className="h-fit rounded-xl border border-sidebar-border/70 bg-background p-6 text-sm text-muted-foreground md:col-span-1 dark:border-sidebar-border">
                                     Tagihan sudah lunas. Tidak ada sisa yang
                                     bisa dibayar.
                                 </div>
                             )}
 
                             <div
-                                className={`h-fit w-full max-w-full justify-self-start overflow-x-auto rounded-xl border border-sidebar-border/70 bg-background dark:border-sidebar-border md:w-fit ${
+                                className={`h-fit w-full max-w-full justify-self-start overflow-x-auto rounded-xl border border-sidebar-border/70 bg-background md:w-fit dark:border-sidebar-border ${
                                     canAddPayment || !isLocked
                                         ? 'md:col-span-2'
                                         : 'md:col-span-3'
@@ -476,12 +458,14 @@ export default function PesananShow({
                                                                   )
                                                                 : '-'}
                                                         </td>
-                                                        <td className="px-6 py-3 text-center capitalize whitespace-nowrap">
+                                                        <td className="px-6 py-3 text-center whitespace-nowrap">
                                                             <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                                                                {p.jenis_pembayaran.toUpperCase()}
+                                                                {jenisPembayaranLabel(
+                                                                    p.jenis_pembayaran,
+                                                                )}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-3 text-muted-foreground whitespace-nowrap">
+                                                        <td className="px-6 py-3 whitespace-nowrap text-muted-foreground">
                                                             {p.metode ?? '-'}
                                                         </td>
                                                         <td className="px-6 py-3 text-right font-mono font-semibold whitespace-nowrap text-green-600 dark:text-green-400">
@@ -508,8 +492,7 @@ export default function PesananShow({
                                                                                 p.id,
                                                                             ),
                                                                             {
-                                                                                preserveScroll:
-                                                                                    true,
+                                                                                preserveScroll: true,
                                                                             },
                                                                         )
                                                                     }
@@ -553,7 +536,7 @@ export default function PesananShow({
                                     <SelectContent>
                                         {statusTransisi.map((s) => (
                                             <SelectItem key={s} value={s}>
-                                                {statusLabels[s]}
+                                                {pesananStatusLabel(s)}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -616,15 +599,14 @@ export default function PesananShow({
                                 <span
                                     className={
                                         statusBayarConfig[
-                                            ringkasanPembayaran.status_pembayaran
+                                            ringkasanPembayaran
+                                                .status_pembayaran
                                         ].className
                                     }
                                 >
-                                    {
-                                        statusBayarConfig[
-                                            ringkasanPembayaran.status_pembayaran
-                                        ].label
-                                    }
+                                    {statusPembayaranLabel(
+                                        ringkasanPembayaran.status_pembayaran,
+                                    )}
                                 </span>
                             </div>
                             <div className="space-y-3 text-sm">
@@ -752,9 +734,15 @@ function PembayaranForm({
                         <SelectValue placeholder="Pilih Jenis..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="dp">DP (Down Payment)</SelectItem>
-                        <SelectItem value="pelunasan">Pelunasan</SelectItem>
-                        <SelectItem value="termin">Termin</SelectItem>
+                        <SelectItem value="dp">
+                            {jenisPembayaranLabel('dp')}
+                        </SelectItem>
+                        <SelectItem value="pelunasan">
+                            {jenisPembayaranLabel('pelunasan')}
+                        </SelectItem>
+                        <SelectItem value="termin">
+                            {jenisPembayaranLabel('termin')}
+                        </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -771,16 +759,15 @@ function PembayaranForm({
                     onChange={(e) =>
                         setData(
                             'nominal',
-                            e.target.value === ''
-                                ? ''
-                                : Number(e.target.value),
+                            e.target.value === '' ? '' : Number(e.target.value),
                         )
                     }
                     placeholder="0"
                     className="h-8 w-full rounded-md border bg-background px-3 text-sm"
                 />
                 <p className="text-xs text-muted-foreground">
-                    Maksimal {new Intl.NumberFormat('id-ID', {
+                    Maksimal{' '}
+                    {new Intl.NumberFormat('id-ID', {
                         style: 'currency',
                         currency: 'IDR',
                         minimumFractionDigits: 0,

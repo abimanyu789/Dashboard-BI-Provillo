@@ -274,6 +274,13 @@ export function MaterialMovementPanel({
     };
 
     const confirmBulkIssue = () => {
+        // Guard race: onClick bisa tembak 2x sebelum state processing re-render.
+        if (bulkProcessing) {
+            return;
+        }
+
+        // Kunci batch + per item distabilkan saat dialog dibuka / attempt pertama,
+        // lalu DIPEGANG sampai sukses — retry pakai kunci yang sama (idempotent).
         const requestKey = bulkRequestKey || createIdempotencyKey();
 
         if (!bulkRequestKey) {
@@ -311,7 +318,12 @@ export function MaterialMovementPanel({
                 onSuccess: () => {
                     setBulkConfirmOpen(false);
                     setBulkOpen(false);
+                    // Regenerasi kunci hanya setelah sukses (batch berikutnya).
                     setBulkRequestKey(createIdempotencyKey());
+                    setItemIdempotency({});
+                },
+                onError: () => {
+                    // Biarkan kunci lama tetap agar retry server-side idempotent.
                 },
                 onFinish: () => {
                     // Always re-enable on success and error so retries work.
@@ -952,7 +964,16 @@ export function MaterialMovementPanel({
             )}
 
             {/* Bulk issue dialog */}
-            <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+            <Dialog
+                open={bulkOpen}
+                onOpenChange={(open) => {
+                    if (bulkProcessing) {
+                        return;
+                    }
+
+                    setBulkOpen(open);
+                }}
+            >
                 <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
                     <DialogHeader>
                         <DialogTitle>
@@ -971,6 +992,7 @@ export function MaterialMovementPanel({
                             <Input
                                 type="date"
                                 value={bulkTanggal}
+                                disabled={bulkProcessing}
                                 onChange={(event) =>
                                     setBulkTanggal(event.target.value)
                                 }
@@ -980,6 +1002,7 @@ export function MaterialMovementPanel({
                             <Label>Keterangan (opsional)</Label>
                             <Input
                                 value={bulkKeterangan}
+                                disabled={bulkProcessing}
                                 onChange={(event) =>
                                     setBulkKeterangan(event.target.value)
                                 }
@@ -1063,6 +1086,7 @@ export function MaterialMovementPanel({
                                                         bulkQtys[material.id] ??
                                                         '0'
                                                     }
+                                                    disabled={bulkProcessing}
                                                     onChange={(event) =>
                                                         setBulkQtys(
                                                             (current) => ({
@@ -1090,7 +1114,11 @@ export function MaterialMovementPanel({
                         </p>
                         <div className="flex gap-2">
                             <DialogClose asChild>
-                                <Button type="button" variant="outline">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={bulkProcessing}
+                                >
                                     Batal
                                 </Button>
                             </DialogClose>
@@ -1123,7 +1151,16 @@ export function MaterialMovementPanel({
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+            <Dialog
+                open={bulkConfirmOpen}
+                onOpenChange={(open) => {
+                    if (bulkProcessing) {
+                        return;
+                    }
+
+                    setBulkConfirmOpen(open);
+                }}
+            >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Konfirmasi Pengeluaran Bahan</DialogTitle>

@@ -320,4 +320,6 @@ export interface ProduksiShowProps {
     activeRework: ActiveRework[];
     qcSummary: QcSummary;
     wageBasis: WageBasis[];
+    /** Alasan (Bahasa Indonesia) dari backend yang menghalangi tombol Selesai. */
+    completionBlockers: string[];
 }

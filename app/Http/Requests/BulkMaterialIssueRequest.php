@@ -43,7 +43,9 @@ class BulkMaterialIssueRequest extends FormRequest
             'items.*.qty.required' => 'Jumlah pengeluaran wajib diisi.',
             'items.*.qty.min' => 'Jumlah pengeluaran tidak boleh negatif.',
             'items.*.idempotency_key.required' => 'Kunci idempotensi per item wajib diisi.',
+            'items.*.idempotency_key.uuid' => 'Kunci idempotensi per item tidak valid.',
             'items.*.idempotency_key.distinct' => 'Kunci idempotensi per item harus unik.',
+            'request_key.required' => 'Kunci permintaan massal wajib diisi.',
             'request_key.uuid' => 'Kunci permintaan massal tidak valid.',
         ];
     }
