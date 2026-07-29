@@ -1,6 +1,11 @@
 @extends('layouts.pdf')
 
 @section('content')
+    <p style="margin: 0 0 12px 0; font-size: 11px; color: #555;">
+        Laporan ini menampilkan mutasi persediaan produk normal saja.
+        Catatan produk cacat layak jual dan riwayat pemusnahan tidak digabung ke
+        stok normal dan tidak termasuk dalam laporan ini.
+    </p>
     <table>
         <thead>
             <tr>
@@ -30,7 +35,7 @@
                 </tr>
             @endforeach
             @if($items->isEmpty())
-                <tr><td colspan="9" class="text-center" style="padding:20px;">Tidak ada data mutasi stok produk jadi.</td></tr>
+                <tr><td colspan="9" class="text-center" style="padding:20px;">Tidak ada data mutasi persediaan produk normal.</td></tr>
             @endif
         </tbody>
     </table>

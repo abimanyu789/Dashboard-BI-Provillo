@@ -11,6 +11,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { qcDispositionLabel, qcStatusLabel } from '@/lib/domain-labels';
 import produksiRoute from '@/routes/produksi';
 import type {
     ActiveRework,
@@ -20,8 +21,6 @@ import type {
     QcSummary,
     WageBasis,
 } from '@/types';
-
-import { qcDispositionLabel, qcStatusLabel } from '@/lib/domain-labels';
 
 const dispositionLabels: Record<QcDisposition, string> = {
     rework: qcDispositionLabel('rework'),
@@ -88,9 +87,15 @@ function LegacyDispositionForm({
                         <SelectValue placeholder="Pilih disposisi..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="rework">{dispositionLabels.rework}</SelectItem>
-                        <SelectItem value="jual_cacat">{dispositionLabels.jual_cacat}</SelectItem>
-                        <SelectItem value="dimusnahkan">{dispositionLabels.dimusnahkan}</SelectItem>
+                        <SelectItem value="rework">
+                            {dispositionLabels.rework}
+                        </SelectItem>
+                        <SelectItem value="jual_cacat">
+                            {dispositionLabels.jual_cacat}
+                        </SelectItem>
+                        <SelectItem value="dimusnahkan">
+                            {dispositionLabels.dimusnahkan}
+                        </SelectItem>
                     </SelectContent>
                 </Select>
                 {errors.disposisi_qc && (
@@ -98,6 +103,12 @@ function LegacyDispositionForm({
                         {errors.disposisi_qc}
                     </p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                    {dispositionLabels.jual_cacat} dan{' '}
+                    {dispositionLabels.dimusnahkan} masuk ledger audit produk
+                    cacat (bukan stok normal, bukan dasar upah).{' '}
+                    {dispositionLabels.rework} tetap di antrean produksi.
+                </p>
             </div>
             <div className="space-y-1.5 md:col-span-2">
                 <Label>Catatan</Label>

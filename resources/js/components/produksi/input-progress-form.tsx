@@ -276,6 +276,14 @@ export function InputProgressForm({
                                 </SelectItem>
                             </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">
+                            {qcDispositionLabel('jual_cacat')} dan{' '}
+                            {qcDispositionLabel('dimusnahkan')} dicatat di
+                            ledger audit produk cacat, bukan stok produk normal,
+                            dan tidak menjadi dasar upah.{' '}
+                            {qcDispositionLabel('rework')} tetap di antrean
+                            produksi sampai lolos pemeriksaan.
+                        </p>
                         {errors.disposisi_qc && (
                             <p className="text-sm text-destructive">
                                 {errors.disposisi_qc}

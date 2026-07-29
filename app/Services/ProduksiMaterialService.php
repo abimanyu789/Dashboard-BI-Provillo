@@ -329,7 +329,7 @@ class ProduksiMaterialService
                 'movement_type' => 'returned',
                 'qty' => $material['returnable'],
                 'tanggal' => now()->toDateString(),
-                'keterangan' => 'Pengembalian otomatis bahan terbit yang belum digunakan saat produksi dibatalkan.',
+                'keterangan' => 'Pengembalian otomatis bahan yang telah dikeluarkan tetapi belum digunakan saat produksi dibatalkan.',
                 'idempotency_key' => "cancel-return:{$produksi->id}:{$material['id']}",
             ], $userId);
         }
@@ -422,12 +422,12 @@ class ProduksiMaterialService
             $satuan = $material['satuan'] !== '' ? ' '.$material['satuan'] : '';
 
             if ($material['consumed'] - ($material['issued'] - $material['returned']) > self::STOCK_EPSILON) {
-                $blockers[] = "Pergerakan bahan {$nama} tidak konsisten: konsumsi melebihi bahan terbit bersih.";
+                $blockers[] = "Pergerakan bahan {$nama} tidak konsisten: konsumsi melebihi bahan yang dikeluarkan (bersih).";
             }
 
             if ($material['returnable'] > self::STOCK_EPSILON) {
                 $qty = $this->formatQty($material['returnable']);
-                $blockers[] = "{$nama} masih memiliki {$qty}{$satuan} bahan terbit yang belum digunakan atau dikembalikan.";
+                $blockers[] = "{$nama} masih memiliki {$qty}{$satuan} bahan yang dikeluarkan tetapi belum digunakan atau dikembalikan.";
             }
 
             if ($material['shortage'] > self::STOCK_EPSILON) {

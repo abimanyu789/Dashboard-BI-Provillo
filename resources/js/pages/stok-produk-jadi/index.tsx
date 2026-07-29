@@ -43,7 +43,6 @@ export default function StokProdukJadiIndex({
     riwayatDimusnahkan,
     produkOptions,
     filters,
-    unresolvedNotes = [],
 }: StokProdukJadiIndexProps) {
     const activeTab = (filters.tab as StokProdukTab) || tab || 'normal';
     const [search, setSearch] = useState(filters.search || '');
@@ -128,7 +127,8 @@ export default function StokProdukJadiIndex({
     const handleTab = (next: StokProdukTab) => {
         navigate({
             tab: next,
-            jenis_transaksi: next === 'normal' ? jenisTransaksi || undefined : undefined,
+            jenis_transaksi:
+                next === 'normal' ? jenisTransaksi || undefined : undefined,
         });
     };
 
@@ -169,8 +169,8 @@ export default function StokProdukJadiIndex({
 
     const tabs: { id: StokProdukTab; label: string }[] = [
         { id: 'normal', label: 'Produk Normal' },
-        { id: 'cacat', label: 'Produk Cacat Layak Jual' },
-        { id: 'dimusnahkan', label: 'Riwayat Dimusnahkan' },
+        { id: 'cacat', label: 'Catatan Produk Cacat Layak Jual' },
+        { id: 'dimusnahkan', label: 'Riwayat Produk Dimusnahkan' },
     ];
 
     const activeFilterCount = [
@@ -191,8 +191,8 @@ export default function StokProdukJadiIndex({
                             Stok Produk Jadi
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            Stok normal, produk cacat layak jual, dan riwayat
-                            dimusnahkan
+                            Persediaan produk normal, catatan produk cacat layak
+                            jual, dan riwayat produk dimusnahkan
                         </p>
                     </div>
                     {activeTab === 'normal' && (
@@ -221,14 +221,34 @@ export default function StokProdukJadiIndex({
                     ))}
                 </div>
 
-                {activeTab === 'cacat' && unresolvedNotes.length > 0 && (
+                {activeTab === 'cacat' && (
                     <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/5 dark:text-amber-200">
-                        <p className="font-medium">Catatan cakupan saat ini</p>
-                        <ul className="mt-2 list-disc space-y-1 pl-5">
-                            {unresolvedNotes.map((note) => (
-                                <li key={note}>{note}</li>
-                            ))}
-                        </ul>
+                        <p className="font-medium">
+                            Batasan catatan produk cacat
+                        </p>
+                        <p className="mt-2">
+                            Data ini merupakan catatan produk cacat yang masih
+                            layak jual berdasarkan hasil pemeriksaan.
+                            Pengeluaran atau penjualan produk cacat belum
+                            dikelola dalam sistem.
+                        </p>
+                        <p className="mt-2 text-xs opacity-90">
+                            Qty di tab ini tidak digabung ke stok produk normal
+                            dan tidak menjadi dasar perhitungan upah. Disposisi
+                            Perbaikan Ulang tetap di antrean produksi.
+                        </p>
+                    </div>
+                )}
+
+                {activeTab === 'dimusnahkan' && (
+                    <div className="rounded-xl border border-muted-foreground/20 bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-muted/20">
+                        <p className="font-medium text-foreground">
+                            Batasan riwayat produk dimusnahkan
+                        </p>
+                        <p className="mt-2">
+                            Produk yang dimusnahkan tidak dihitung sebagai
+                            persediaan dan hanya disimpan sebagai riwayat audit.
+                        </p>
                     </div>
                 )}
 
@@ -399,7 +419,7 @@ export default function StokProdukJadiIndex({
                                                         idx +
                                                         1}
                                                 </TableCell>
-                                                <TableCell className="whitespace-nowrap text-sm">
+                                                <TableCell className="text-sm whitespace-nowrap">
                                                     {formatDate(
                                                         item.created_at,
                                                     )}
@@ -407,11 +427,13 @@ export default function StokProdukJadiIndex({
                                                 <TableCell>
                                                     <div className="font-medium">
                                                         {item.produk
-                                                            ?.nama_produk ?? '-'}
+                                                            ?.nama_produk ??
+                                                            '-'}
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">
                                                         {item.produk
-                                                            ?.kode_produk ?? '-'}
+                                                            ?.kode_produk ??
+                                                            '-'}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -535,7 +557,7 @@ export default function StokProdukJadiIndex({
                                             <TableCell className="text-sm">
                                                 {row.karyawan ?? '-'}
                                             </TableCell>
-                                            <TableCell className="whitespace-nowrap text-sm">
+                                            <TableCell className="text-sm whitespace-nowrap">
                                                 {formatDate(row.inspected_at)}
                                             </TableCell>
                                             <TableCell className="max-w-48 truncate text-sm text-muted-foreground">
@@ -617,7 +639,7 @@ export default function StokProdukJadiIndex({
                                                     '-'
                                                 )}
                                             </TableCell>
-                                            <TableCell className="whitespace-nowrap text-sm">
+                                            <TableCell className="text-sm whitespace-nowrap">
                                                 {formatDate(row.inspected_at)}
                                             </TableCell>
                                             <TableCell className="max-w-48 truncate text-sm text-muted-foreground">

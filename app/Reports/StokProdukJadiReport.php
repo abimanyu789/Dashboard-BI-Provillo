@@ -10,7 +10,9 @@ class StokProdukJadiReport extends BaseReport
 {
     public function title(): string
     {
-        return 'Laporan Stok Produk Jadi';
+        // Hanya mutasi persediaan normal (stok_produk_jadi).
+        // Catatan jual_cacat / dimusnahkan ada di ledger terpisah, bukan di laporan ini.
+        return 'Laporan Stok Produk Jadi (Persediaan Normal)';
     }
 
     public function filename(): string

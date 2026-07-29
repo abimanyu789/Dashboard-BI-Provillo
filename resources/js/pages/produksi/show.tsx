@@ -81,17 +81,15 @@ export default function ProduksiShow({
 
     // Banner informatif di tengah proses (bukan sumber kebenaran tombol Selesai).
     // Tombol Selesai + checklist memakai completionBlockers dari backend.
+    // Pakai field materialSummary dari service (jangan hitung ulang rumus berbeda):
+    // - shortage = sisa rencana yang belum dikeluarkan
+    // - status 'shortage' = sisa rencana melebihi stok gudang
     const hasMaterialShortage = materialSummary.some(
+        (material) => material.status === 'shortage',
+    );
+    const hasUnissuedPlan = materialSummary.some(
         (material) => material.shortage > 0.00001,
     );
-    const hasUnissuedPlan = materialSummary.some((material) => {
-        const remaining = Math.max(
-            0,
-            material.planned - (material.issued - material.returned),
-        );
-
-        return remaining > 0.00001;
-    });
     const isSelesaiEnabled =
         item.status === 'proses' && completionBlockers.length === 0;
 

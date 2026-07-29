@@ -69,9 +69,12 @@ class StokProdukJadiController extends Controller
                 'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
             ],
-            // Keputusan belum final: alur penjualan/pengeluaran produk cacat layak jual.
+            // Catatan batas cakupan: cacat layak jual & dimusnahkan adalah ledger audit QC,
+            // bukan persediaan penuh. Workflow penjualan/pengeluaran cacat belum diputuskan.
             'unresolvedNotes' => [
-                'Penanganan penjualan/pengeluaran stok produk cacat layak jual belum disediakan di modul ini. Untuk cakupan saat ini, qty cacat dihitung dari catatan stok_produk_cacat (disposisi jual_cacat) dan tidak digabung ke stok normal.',
+                'Data ini merupakan catatan produk cacat yang masih layak jual berdasarkan hasil pemeriksaan. Pengeluaran atau penjualan produk cacat belum dikelola dalam sistem.',
+                'Produk yang dimusnahkan tidak dihitung sebagai persediaan dan hanya disimpan sebagai riwayat audit.',
+                'Catatan produk cacat dan pemusnahan tidak digabung ke stok produk normal. Perbaikan ulang tetap di antrean produksi sampai lolos pemeriksaan.',
             ],
         ];
 
