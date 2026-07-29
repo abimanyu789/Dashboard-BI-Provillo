@@ -11,8 +11,8 @@ class PesananService
     /**
      * Buat pesanan baru beserta seluruh detail item dalam satu transaksi.
      *
-     * @param  array $data  Validated data dari PesananRequest
-     * @param  int   $createdBy  ID user yang membuat pesanan
+     * @param  array  $data  Validated data dari PesananRequest
+     * @param  int  $createdBy  ID user yang membuat pesanan
      */
     public function createWithDetails(array $data, int $createdBy): Pesanan
     {
@@ -20,16 +20,16 @@ class PesananService
             $kalkulasi = $this->hitungTotal($data['items'], $data);
 
             $pesanan = Pesanan::create([
-                'customer_id'      => $data['customer_id'],
-                'created_by'       => $createdBy,
-                'tanggal'          => $data['tanggal'],
-                'status'           => 'pending',
+                'customer_id' => $data['customer_id'],
+                'created_by' => $createdBy,
+                'tanggal' => $data['tanggal'],
+                'status' => 'pending',
                 'jenis_pembayaran' => $data['jenis_pembayaran'] ?? null,
-                'subtotal'         => $kalkulasi['subtotal'],
-                'diskon'           => $kalkulasi['diskon'],
-                'ongkir'           => $data['ongkir'] ?? 0,
-                'total'            => $kalkulasi['total'],
-                'keterangan'       => $data['keterangan'] ?? null,
+                'subtotal' => $kalkulasi['subtotal'],
+                'diskon' => $kalkulasi['diskon'],
+                'ongkir' => $data['ongkir'] ?? 0,
+                'total' => $kalkulasi['total'],
+                'keterangan' => $data['keterangan'] ?? null,
             ]);
 
             $this->syncDetails($pesanan, $data['items']);
@@ -41,7 +41,7 @@ class PesananService
     /**
      * Update pesanan (full edit — hanya boleh saat status pending & belum ada pengiriman).
      *
-     * @param  array $data  Validated data dari PesananRequest
+     * @param  array  $data  Validated data dari PesananRequest
      */
     public function updateWithDetails(Pesanan $pesanan, array $data): Pesanan
     {
@@ -62,14 +62,14 @@ class PesananService
             $kalkulasi = $this->hitungTotal($data['items'], $data);
 
             $pesanan->update([
-                'customer_id'      => $data['customer_id'],
-                'tanggal'          => $data['tanggal'],
+                'customer_id' => $data['customer_id'],
+                'tanggal' => $data['tanggal'],
                 'jenis_pembayaran' => $data['jenis_pembayaran'] ?? null,
-                'subtotal'         => $kalkulasi['subtotal'],
-                'diskon'           => $kalkulasi['diskon'],
-                'ongkir'           => $data['ongkir'] ?? 0,
-                'total'            => $kalkulasi['total'],
-                'keterangan'       => $data['keterangan'] ?? null,
+                'subtotal' => $kalkulasi['subtotal'],
+                'diskon' => $kalkulasi['diskon'],
+                'ongkir' => $data['ongkir'] ?? 0,
+                'total' => $kalkulasi['total'],
+                'keterangan' => $data['keterangan'] ?? null,
             ]);
 
             // Hapus semua detail lama, ganti dengan yang baru
@@ -90,7 +90,7 @@ class PesananService
      *
      * Transisi ke 'selesai' HANYA lewat evaluateCompletion() (R1 / BR-PSN-10).
      *
-     * @throws \RuntimeException  Jika transisi status tidak valid
+     * @throws \RuntimeException Jika transisi status tidak valid
      */
     public function updateStatus(Pesanan $pesanan, string $statusBaru): Pesanan
     {
@@ -109,10 +109,10 @@ class PesananService
 
         $transisiValid = [
             'pending' => ['proses', 'dibatalkan'],
-            'proses'  => ['dibatalkan'],
+            'proses' => ['dibatalkan'],
         ];
 
-        $statusSaatIni   = $pesanan->status;
+        $statusSaatIni = $pesanan->status;
         $statusDiizinkan = $transisiValid[$statusSaatIni] ?? [];
 
         if (! in_array($statusBaru, $statusDiizinkan, true)) {
@@ -135,7 +135,8 @@ class PesananService
     }
 
     /**
-     * BR-PSN-13: Naikkan pending → proses saat ada aktivitas (bayar/ship pertama).
+     * BR-PSN-13: Naikkan pending → proses saat ada aktivitas pertama:
+     * pembayaran, pengiriman produk, atau produksi yang terhubung ke pesanan.
      */
     public function promoteToProsesIfPending(Pesanan $pesanan): void
     {
@@ -147,8 +148,9 @@ class PesananService
     }
 
     /**
-     * BR-PSN-10: Auto-selesai jika lunas + semua produk terkirim.
-     * Hanya dari status 'proses'.
+     * BR-PSN-10: Auto-selesai hanya jika (a) status pembayaran lunas
+     * dan (b) semua produk pesanan sudah dikirim penuh.
+     * Hanya dari status 'proses' — status selesai tidak di-set manual.
      */
     public function evaluateCompletion(Pesanan $pesanan): void
     {
@@ -159,6 +161,7 @@ class PesananService
             return;
         }
 
+        // Status pembayaran derived: lunas = Σ nominal ≥ total tagihan
         if ($pesanan->isLunas() && $pesanan->isFullyShipped()) {
             $pesanan->update(['status' => 'selesai']);
         }
@@ -187,8 +190,8 @@ class PesananService
     /**
      * Hitung subtotal, diskon (nominal akhir), dan total.
      *
-     * @param  array $items  Array of ['produk_id', 'qty', 'harga']
-     * @param  array $data   Termasuk 'tipe_diskon', 'diskon', 'ongkir'
+     * @param  array  $items  Array of ['produk_id', 'qty', 'harga']
+     * @param  array  $data  Termasuk 'tipe_diskon', 'diskon', 'ongkir'
      */
     public function hitungTotal(array $items, array $data): array
     {
@@ -205,12 +208,12 @@ class PesananService
         }
 
         $ongkir = (float) ($data['ongkir'] ?? 0);
-        $total  = $subtotal - $nilaiDiskon + $ongkir;
+        $total = $subtotal - $nilaiDiskon + $ongkir;
 
         return [
             'subtotal' => $subtotal,
-            'diskon'   => $nilaiDiskon,    // selalu disimpan sebagai nominal rupiah
-            'total'    => max(0, $total),  // total tidak boleh negatif
+            'diskon' => $nilaiDiskon,    // selalu disimpan sebagai nominal rupiah
+            'total' => max(0, $total),  // total tidak boleh negatif
         ];
     }
 
@@ -222,10 +225,10 @@ class PesananService
         foreach ($items as $item) {
             DetailPesanan::create([
                 'pesanan_id' => $pesanan->id,
-                'produk_id'  => $item['produk_id'],
-                'qty'        => $item['qty'],
-                'harga'      => $item['harga'],
-                'subtotal'   => $item['qty'] * $item['harga'],
+                'produk_id' => $item['produk_id'],
+                'qty' => $item['qty'],
+                'harga' => $item['harga'],
+                'subtotal' => $item['qty'] * $item['harga'],
             ]);
         }
     }

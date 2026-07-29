@@ -56,7 +56,7 @@ instruksi eksplisit dari pemilik project.
 - BR-PBY-11 Status bayar bersifat **derived** (bukan kolom DB): `belum_bayar` / `sebagian` / `lunas` dari `Σ nominal` vs `total`.
 - BR-PSN-10 Auto `status = selesai` **hanya** jika (a) lunas **dan** (b) semua item pesanan sudah terkirim penuh. Status Selesai tidak tersedia di dropdown manual.
 - BR-PSN-12 Pembatalan pesanan yang sudah punya pengiriman diblok (perlu reverse stok dulu).
-- BR-PSN-13 Auto `pending → proses` saat aktivitas bayar/ship pertama (kurangi lupa ubah status).
+- BR-PSN-13 Auto `pending → proses` saat aktivitas pertama: pembayaran, pengiriman produk, atau produksi terhubung ke pesanan (kurangi lupa ubah status).
 
 ## Stok Bahan Baku (KF-11, KF-16)
 - BR-01 Stok tidak boleh negatif.

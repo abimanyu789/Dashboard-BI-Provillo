@@ -23,16 +23,19 @@ class PesananController extends Controller
      */
     public function index(Request $request)
     {
-        $search  = $request->input('search');
-        $status  = $request->input('status');
-        $sortBy  = $request->input('sort_by', 'created_at');
+        $search = $request->input('search');
+        $status = $request->input('status');
+        $statusPembayaran = $request->input('status_pembayaran');
+        $sortBy = $request->input('sort_by', 'created_at');
         $sortDir = $request->input('sort_dir', 'desc');
 
         $allowedSorts = ['nomor_pesanan', 'tanggal', 'total', 'status', 'created_at'];
-        if (!in_array($sortBy, $allowedSorts)) {
+        if (! in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'created_at';
         }
         $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
+
+        $allowedPaymentStatuses = ['belum_bayar', 'sebagian', 'lunas'];
 
         $pesanans = Pesanan::with(['customer', 'pembayarans'])
             ->when($search, function ($query, $search) {
@@ -43,9 +46,14 @@ class PesananController extends Controller
                         });
                 });
             })
-            ->when($status && in_array($status, ['pending', 'proses', 'selesai', 'dibatalkan']), function ($query) use ($status) {
-                $query->where('status', $status);
-            })
+            ->when(
+                $status && in_array($status, ['pending', 'proses', 'selesai', 'dibatalkan'], true),
+                fn ($query) => $query->where('status', $status)
+            )
+            ->when(
+                $statusPembayaran && in_array($statusPembayaran, $allowedPaymentStatuses, true),
+                fn ($query) => $query->whereStatusPembayaran($statusPembayaran)
+            )
             ->orderBy($sortBy, $sortDir)
             ->paginate(15)
             ->withQueryString();
@@ -53,15 +61,17 @@ class PesananController extends Controller
         // Append status_pembayaran ke tiap item (derived dari pembayarans yang sudah eager loaded)
         $pesanans->getCollection()->transform(function (Pesanan $p) {
             $p->status_pembayaran = $p->statusPembayaran();
+
             return $p;
         });
 
         return Inertia::render('pesanan/index', [
             'pesanans' => $pesanans,
-            'filters'  => [
-                'search'   => $search,
-                'status'   => $status,
-                'sort_by'  => $sortBy,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+                'status_pembayaran' => $statusPembayaran,
+                'sort_by' => $sortBy,
                 'sort_dir' => $sortDir,
             ],
         ]);
@@ -74,7 +84,7 @@ class PesananController extends Controller
     {
         return Inertia::render('pesanan/create', [
             'customers' => Customer::orderBy('nama_customer')->get(['id', 'nama_customer', 'jenis_customer']),
-            'produks'   => Produk::orderBy('nama_produk')->get(['id', 'kode_produk', 'nama_produk', 'harga_jual', 'stok']),
+            'produks' => Produk::orderBy('nama_produk')->get(['id', 'kode_produk', 'nama_produk', 'harga_jual', 'stok']),
         ]);
     }
 
@@ -138,9 +148,9 @@ class PesananController extends Controller
         $pesanan->load('detailPesanan.produk');
 
         return Inertia::render('pesanan/edit', [
-            'pesanan'   => $pesanan,
+            'pesanan' => $pesanan,
             'customers' => Customer::orderBy('nama_customer')->get(['id', 'nama_customer', 'jenis_customer']),
-            'produks'   => Produk::orderBy('nama_produk')->get(['id', 'kode_produk', 'nama_produk', 'harga_jual', 'stok']),
+            'produks' => Produk::orderBy('nama_produk')->get(['id', 'kode_produk', 'nama_produk', 'harga_jual', 'stok']),
         ]);
     }
 
@@ -205,7 +215,7 @@ class PesananController extends Controller
         $pesanan->load(['customer', 'createdBy', 'detailPesanan.produk']);
 
         $pdf = Pdf::loadView('pdf.invoice', [
-            'pesanan'      => $pesanan,
+            'pesanan' => $pesanan,
             'nomorInvoice' => $pesanan->nomor_invoice,
         ])->setPaper('a4', 'portrait');
 
@@ -224,8 +234,8 @@ class PesananController extends Controller
     {
         return match ($status) {
             'pending' => ['proses', 'dibatalkan'],
-            'proses'  => ['dibatalkan'],
-            default   => [],
+            'proses' => ['dibatalkan'],
+            default => [],
         };
     }
 }

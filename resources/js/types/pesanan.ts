@@ -86,6 +86,7 @@ export interface PesananIndexProps {
     filters: {
         search?: string;
         status?: string;
+        status_pembayaran?: string;
         sort_by?: string;
         sort_dir?: string;
     };

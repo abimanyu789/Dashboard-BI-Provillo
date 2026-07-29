@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -26,11 +27,11 @@ class Pesanan extends Model
     ];
 
     protected $casts = [
-        'tanggal'  => 'date',
+        'tanggal' => 'date',
         'subtotal' => 'decimal:2',
-        'diskon'   => 'decimal:2',
-        'ongkir'   => 'decimal:2',
-        'total'    => 'decimal:2',
+        'diskon' => 'decimal:2',
+        'ongkir' => 'decimal:2',
+        'total' => 'decimal:2',
     ];
 
     /**
@@ -52,7 +53,7 @@ class Pesanan extends Model
     public static function generateNomor(): string
     {
         $tanggal = now()->format('Ymd');
-        $prefix  = "PSN-{$tanggal}-";
+        $prefix = "PSN-{$tanggal}-";
 
         // Lock agar aman dari race condition
         $last = DB::table('pesanan')
@@ -65,15 +66,30 @@ class Pesanan extends Model
             ? (int) substr($last, -4) + 1
             : 1;
 
-        return $prefix . str_pad($urutan, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($urutan, 4, '0', STR_PAD_LEFT);
     }
 
     // ─── Status helpers ──────────────────────────────────────────────────────
 
-    public function isPending(): bool   { return $this->status === 'pending'; }
-    public function isProses(): bool    { return $this->status === 'proses'; }
-    public function isSelesai(): bool   { return $this->status === 'selesai'; }
-    public function isDibatalkan(): bool { return $this->status === 'dibatalkan'; }
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isProses(): bool
+    {
+        return $this->status === 'proses';
+    }
+
+    public function isSelesai(): bool
+    {
+        return $this->status === 'selesai';
+    }
+
+    public function isDibatalkan(): bool
+    {
+        return $this->status === 'dibatalkan';
+    }
 
     /** Status selesai/dibatalkan tidak boleh diedit/dihapus (BR-07) */
     public function isLocked(): bool
@@ -85,7 +101,12 @@ class Pesanan extends Model
 
     public function totalDibayar(): float
     {
-        return (float) $this->pembayarans()->sum('nominal');
+        // Pakai relasi eager-loaded bila sudah ada agar filter/index tidak N+1.
+        if ($this->relationLoaded('pembayarans')) {
+            return round((float) $this->pembayarans->sum('nominal'), 2);
+        }
+
+        return round((float) $this->pembayarans()->sum('nominal'), 2);
     }
 
     public function sisaTagihan(): float
@@ -118,12 +139,36 @@ class Pesanan extends Model
         return 'sebagian';
     }
 
+    /**
+     * Filter query berdasarkan status pembayaran derived (BR-PBY-11).
+     * status_pembayaran bukan kolom DB; dihitung dari Σ pembayaran vs total.
+     *
+     * @param  Builder<Pesanan>  $query
+     * @param  'belum_bayar'|'sebagian'|'lunas'  $status
+     * @return Builder<Pesanan>
+     */
+    public function scopeWhereStatusPembayaran(Builder $query, string $status): Builder
+    {
+        $paidSubquery = '(SELECT COALESCE(SUM(nominal), 0) FROM pembayaran WHERE pembayaran.pesanan_id = pesanan.id)';
+
+        return match ($status) {
+            'belum_bayar' => $query->whereRaw("{$paidSubquery} <= 0"),
+            'lunas' => $query
+                ->where('total', '>', 0)
+                ->whereRaw("{$paidSubquery} + 0.009 >= pesanan.total"),
+            'sebagian' => $query
+                ->whereRaw("{$paidSubquery} > 0")
+                ->whereRaw("{$paidSubquery} + 0.009 < pesanan.total"),
+            default => $query,
+        };
+    }
+
     // ─── Pengiriman helpers (derived — BR-KIR) ────────────────────────────────
 
     /**
      * Qty produk yang sudah dikirim untuk pesanan ini.
      *
-     * @return array<int, int>  map produk_id => qty_dikirim
+     * @return array<int, int> map produk_id => qty_dikirim
      */
     public function qtyDikirimPerProduk(): array
     {

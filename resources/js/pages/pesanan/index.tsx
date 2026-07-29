@@ -1,5 +1,14 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { ChevronDown, ChevronUp, ChevronsUpDown, Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronUp,
+    ChevronsUpDown,
+    Eye,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { PesananDeleteDialog } from '@/components/pesanan/pesanan-delete-dialog';
 import { PesananStatusBadge } from '@/components/pesanan/pesanan-status-badge';
@@ -20,26 +29,35 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { pesananStatusLabel } from '@/lib/domain-labels';
+import { pesananStatusLabel, statusPembayaranLabel } from '@/lib/domain-labels';
 import pesanan from '@/routes/pesanan';
-import type { PesananIndexProps, StatusPesanan } from '@/types';
+import type {
+    PesananIndexProps,
+    StatusPembayaran,
+    StatusPesanan,
+} from '@/types';
 
 export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [status, setStatus] = useState(filters.status || '');
+    const [statusPembayaran, setStatusPembayaran] = useState(
+        filters.status_pembayaran || '',
+    );
 
-    const sortBy  = filters.sort_by  || 'created_at';
+    const sortBy = filters.sort_by || 'created_at';
     const sortDir = filters.sort_dir || 'desc';
 
-    type SortableColumn = 'nomor_pesanan' | 'tanggal' | 'total' | 'status' | 'created_at';
+    type SortableColumn =
+        'nomor_pesanan' | 'tanggal' | 'total' | 'status' | 'created_at';
 
     const navigate = (overrides: Record<string, unknown> = {}) => {
         router.get(
             pesanan.index.url(),
             {
-                search:   search || undefined,
-                status:   status || undefined,
-                sort_by:  sortBy,
+                search: search || undefined,
+                status: status || undefined,
+                status_pembayaran: statusPembayaran || undefined,
+                sort_by: sortBy,
                 sort_dir: sortDir,
                 ...overrides,
             },
@@ -53,18 +71,28 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
     };
 
     const SortIcon = ({ column }: { column: SortableColumn }) => {
-        if (sortBy !== column) return <ChevronsUpDown className="ml-1 inline size-3.5 opacity-50" />;
-        return sortDir === 'asc'
-            ? <ChevronUp className="ml-1 inline size-3.5" />
-            : <ChevronDown className="ml-1 inline size-3.5" />;
+        if (sortBy !== column)
+            return (
+                <ChevronsUpDown className="ml-1 inline size-3.5 opacity-50" />
+            );
+        return sortDir === 'asc' ? (
+            <ChevronUp className="ml-1 inline size-3.5" />
+        ) : (
+            <ChevronDown className="ml-1 inline size-3.5" />
+        );
     };
 
-    const sortableHead = (column: SortableColumn, label: string, className?: string) => (
+    const sortableHead = (
+        column: SortableColumn,
+        label: string,
+        className?: string,
+    ) => (
         <TableHead
-            className={`cursor-pointer select-none whitespace-nowrap hover:bg-muted/50 ${className ?? ''}`}
+            className={`cursor-pointer whitespace-nowrap select-none hover:bg-muted/50 ${className ?? ''}`}
             onClick={() => handleSort(column)}
         >
-            {label}<SortIcon column={column} />
+            {label}
+            <SortIcon column={column} />
         </TableHead>
     );
 
@@ -79,9 +107,16 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
         navigate({ status: newVal || undefined });
     };
 
+    const handleStatusPembayaranFilter = (value: string) => {
+        const newVal = value === 'semua' ? '' : value;
+        setStatusPembayaran(newVal);
+        navigate({ status_pembayaran: newVal || undefined });
+    };
+
     const handleReset = () => {
         setSearch('');
         setStatus('');
+        setStatusPembayaran('');
         router.get(pesanan.index.url(), {}, { preserveState: false });
     };
 
@@ -99,7 +134,12 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
             year: 'numeric',
         });
 
-    const activeFilterCount = [status].filter(Boolean).length;
+    const activeFilterCount = [status, statusPembayaran].filter(Boolean).length;
+    const paymentStatuses: StatusPembayaran[] = [
+        'belum_bayar',
+        'sebagian',
+        'lunas',
+    ];
 
     return (
         <>
@@ -109,7 +149,9 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Pesanan</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">
+                            Pesanan
+                        </h1>
                         <p className="text-sm text-muted-foreground">
                             Kelola pesanan dan status pengiriman
                         </p>
@@ -124,9 +166,12 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
 
                 {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-3">
-                    <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2">
+                    <form
+                        onSubmit={handleSearch}
+                        className="flex flex-1 items-center gap-2"
+                    >
                         <div className="relative max-w-sm flex-1">
-                            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                                 type="text"
                                 placeholder="Cari nomor pesanan atau nama customer..."
@@ -135,10 +180,15 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                                 className="pl-9"
                             />
                         </div>
-                        <Button type="submit" variant="secondary">Cari</Button>
+                        <Button type="submit" variant="secondary">
+                            Cari
+                        </Button>
                     </form>
 
-                    <Select value={status || 'semua'} onValueChange={handleStatusFilter}>
+                    <Select
+                        value={status || 'semua'}
+                        onValueChange={handleStatusFilter}
+                    >
                         <SelectTrigger className="w-40">
                             <SelectValue placeholder="Semua Status" />
                         </SelectTrigger>
@@ -159,9 +209,35 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                         </SelectContent>
                     </Select>
 
+                    <Select
+                        value={statusPembayaran || 'semua'}
+                        onValueChange={handleStatusPembayaranFilter}
+                    >
+                        <SelectTrigger className="w-44">
+                            <SelectValue placeholder="Semua Pembayaran" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="semua">
+                                Semua Pembayaran
+                            </SelectItem>
+                            {paymentStatuses.map((paymentStatus) => (
+                                <SelectItem
+                                    key={paymentStatus}
+                                    value={paymentStatus}
+                                >
+                                    {statusPembayaranLabel(paymentStatus)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
                     {(search || activeFilterCount > 0) && (
-                        <Button variant="ghost" size="sm" onClick={handleReset}
-                            className="text-muted-foreground">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleReset}
+                            className="text-muted-foreground"
+                        >
                             Reset filter
                         </Button>
                     )}
@@ -179,47 +255,63 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                                 {sortableHead('status', 'Status')}
                                 <TableHead>Status Pembayaran</TableHead>
                                 {sortableHead('total', 'Total', 'text-right')}
-                                <TableHead className="w-28 text-center">Aksi</TableHead>
+                                <TableHead className="w-28 text-center">
+                                    Aksi
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {pesanans.data.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                                        {search || status ? 'Tidak ada data yang ditemukan.' : 'Belum ada pesanan.'}
+                                    <TableCell
+                                        colSpan={8}
+                                        className="h-24 text-center text-muted-foreground"
+                                    >
+                                        {search || status || statusPembayaran
+                                            ? 'Tidak ada data yang ditemukan.'
+                                            : 'Belum ada pesanan.'}
                                     </TableCell>
                                 </TableRow>
                             ) : (
                                 pesanans.data.map((item, idx) => (
                                     <TableRow key={item.id}>
                                         <TableCell className="text-muted-foreground">
-                                            {(pesanans.current_page - 1) * pesanans.per_page + idx + 1}
+                                            {(pesanans.current_page - 1) *
+                                                pesanans.per_page +
+                                                idx +
+                                                1}
                                         </TableCell>
                                         <TableCell className="font-mono text-sm font-medium">
                                             {item.nomor_pesanan}
                                         </TableCell>
                                         <TableCell>
-                                            {item.customer?.nama_customer ?? '-'}
+                                            {item.customer?.nama_customer ??
+                                                '-'}
                                         </TableCell>
-                                        <TableCell className="whitespace-nowrap text-sm">
+                                        <TableCell className="text-sm whitespace-nowrap">
                                             {formatDate(item.tanggal)}
                                         </TableCell>
                                         <TableCell>
-                                            <PesananStatusBadge status={item.status} />
+                                            <PesananStatusBadge
+                                                status={item.status}
+                                            />
                                         </TableCell>
                                         <TableCell>
-                                            <span className={
-                                                item.status_pembayaran === 'lunas'
-                                                    ? 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400'
-                                                    : item.status_pembayaran === 'sebagian'
-                                                    ? 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400'
-                                                    : 'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400'
-                                            }>
-                                                {item.status_pembayaran === 'lunas'
-                                                    ? 'Lunas'
-                                                    : item.status_pembayaran === 'sebagian'
-                                                    ? 'Sebagian'
-                                                    : 'Belum Bayar'}
+                                            <span
+                                                className={
+                                                    item.status_pembayaran ===
+                                                    'lunas'
+                                                        ? 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-400'
+                                                        : item.status_pembayaran ===
+                                                            'sebagian'
+                                                          ? 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400'
+                                                          : 'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400'
+                                                }
+                                            >
+                                                {statusPembayaranLabel(
+                                                    item.status_pembayaran ??
+                                                        'belum_bayar',
+                                                )}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-right font-mono text-sm font-medium">
@@ -227,20 +319,44 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center justify-center gap-1">
-                                                <Link href={pesanan.show.url(item.id)}>
-                                                    <Button variant="ghost" size="icon" className="size-8">
+                                                <Link
+                                                    href={pesanan.show.url(
+                                                        item.id,
+                                                    )}
+                                                >
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-8"
+                                                    >
                                                         <Eye className="size-4" />
                                                     </Button>
                                                 </Link>
-                                                {!['selesai', 'dibatalkan'].includes(item.status) && (
-                                                    <Link href={pesanan.edit.url(item.id)}>
-                                                        <Button variant="ghost" size="icon" className="size-8">
+                                                {![
+                                                    'selesai',
+                                                    'dibatalkan',
+                                                ].includes(item.status) && (
+                                                    <Link
+                                                        href={pesanan.edit.url(
+                                                            item.id,
+                                                        )}
+                                                    >
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="size-8"
+                                                        >
                                                             <Pencil className="size-4" />
                                                         </Button>
                                                     </Link>
                                                 )}
-                                                {!['selesai', 'dibatalkan'].includes(item.status) && (
-                                                    <PesananDeleteDialog pesanan={item} />
+                                                {![
+                                                    'selesai',
+                                                    'dibatalkan',
+                                                ].includes(item.status) && (
+                                                    <PesananDeleteDialog
+                                                        pesanan={item}
+                                                    />
                                                 )}
                                             </div>
                                         </TableCell>
@@ -254,17 +370,29 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
                     {pesanans.last_page > 1 && (
                         <div className="flex items-center justify-between border-t px-4 py-3">
                             <p className="text-sm text-muted-foreground">
-                                Menampilkan {pesanans.from ?? 0}–{pesanans.to ?? 0} dari {pesanans.total} data
+                                Menampilkan {pesanans.from ?? 0}–
+                                {pesanans.to ?? 0} dari {pesanans.total} data
                             </p>
                             <div className="flex gap-1">
                                 {pesanans.links.map((link, i) => (
                                     <Button
                                         key={i}
-                                        variant={link.active ? 'default' : 'outline'}
+                                        variant={
+                                            link.active ? 'default' : 'outline'
+                                        }
                                         size="sm"
                                         disabled={!link.url}
-                                        onClick={() => link.url && router.get(link.url, {}, { preserveState: true })}
-                                        dangerouslySetInnerHTML={{ __html: link.label }}
+                                        onClick={() =>
+                                            link.url &&
+                                            router.get(
+                                                link.url,
+                                                {},
+                                                { preserveState: true },
+                                            )
+                                        }
+                                        dangerouslySetInnerHTML={{
+                                            __html: link.label,
+                                        }}
                                     />
                                 ))}
                             </div>
@@ -277,7 +405,5 @@ export default function PesananIndex({ pesanans, filters }: PesananIndexProps) {
 }
 
 PesananIndex.layout = {
-    breadcrumbs: [
-        { title: 'Pesanan', href: pesanan.index.url() },
-    ],
+    breadcrumbs: [{ title: 'Pesanan', href: pesanan.index.url() }],
 };

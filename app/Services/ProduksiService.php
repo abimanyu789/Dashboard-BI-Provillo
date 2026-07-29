@@ -18,6 +18,7 @@ class ProduksiService
     public function __construct(
         private readonly StockProdukService $stockProdukService,
         private readonly ProduksiMaterialService $materialService,
+        private readonly PesananService $pesananService,
     ) {}
 
     // ─── Create ──────────────────────────────────────────────────────────────
@@ -86,7 +87,10 @@ class ProduksiService
             // Simpan daftar karyawan
             $this->syncKaryawan($produksi, $data['karyawan_ids'] ?? []);
 
-            return $produksi;
+            // BR-PSN-13: aktivitas produksi untuk pesanan menaikkan pending → proses
+            $this->pesananService->promoteToProsesIfPending($pesanan);
+
+            return $produksi->fresh();
         });
     }
 
